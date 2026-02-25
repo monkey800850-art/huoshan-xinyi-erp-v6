@@ -73,10 +73,14 @@
         <div class="row">
           <label>单位编码 <input id="orgCodeInput" placeholder="例如 CUST001" /></label>
           <label>单位名称 <input id="orgNameInput" placeholder="例如 杭州A客户" /></label>
+          <label>统一社会信用代码 <input id="orgCreditCodeInput" placeholder="例如 91330100XXXXXXXX" /></label>
+          <label>单位地址 <input id="orgAddressInput" placeholder="例如 杭州市西湖区XX路" /></label>
+          <label>联系人 <input id="orgContactInput" placeholder="例如 李四" /></label>
+          <label>联系电话 <input id="orgPhoneInput" placeholder="例如 13800000000" /></label>
           <button id="addOrgBtn">新增单位</button>
         </div>
         <table id="orgTable">
-          <thead><tr><th>ID</th><th>编码</th><th>名称</th><th>操作</th></tr></thead>
+          <thead><tr><th>ID</th><th>编码</th><th>名称</th><th>统一社会信用代码</th><th>单位地址</th><th>联系人</th><th>联系电话</th><th>操作</th></tr></thead>
           <tbody></tbody>
         </table>
 
@@ -84,21 +88,44 @@
         <div class="row">
           <label>个人编码 <input id="personCodeInput" placeholder="例如 EMP001" /></label>
           <label>个人姓名 <input id="personNameInput" placeholder="例如 张三" /></label>
+          <label>类型
+            <select id="personKindSelect">
+              <option value="EXTERNAL">外部</option>
+              <option value="EMPLOYEE">员工</option>
+            </select>
+          </label>
+          <label>身份证号 <input id="personIdNoInput" placeholder="例如 3301************" /></label>
+          <label>联系地址 <input id="personAddressInput" placeholder="例如 杭州市滨江区XX路" /></label>
+          <label>联系电话 <input id="personPhoneInput" placeholder="例如 13900000000" /></label>
+          <label>所属部门（员工必填）
+            <select id="personDeptSelect"></select>
+          </label>
           <button id="addPersonBtn">新增个人</button>
         </div>
         <table id="personTable">
-          <thead><tr><th>ID</th><th>编码</th><th>姓名</th><th>操作</th></tr></thead>
+          <thead><tr><th>ID</th><th>编码</th><th>姓名</th><th>类型</th><th>身份证号</th><th>联系地址</th><th>联系电话</th><th>部门归属历史</th><th>操作</th></tr></thead>
           <tbody></tbody>
         </table>
+        <div class="row">
+          <label>人员调部门
+            <select id="transferPersonSelect"></select>
+          </label>
+          <label>新部门
+            <select id="transferDeptSelect"></select>
+          </label>
+          <label>生效日期 <input type="date" id="transferDateInput" /></label>
+          <button id="transferDeptBtn">部门变更</button>
+        </div>
 
         <h3>部门档案</h3>
         <div class="row">
           <label>部门编码 <input id="deptCodeInput" placeholder="例如 D001" /></label>
           <label>部门名称 <input id="deptNameInput" placeholder="例如 财务部" /></label>
+          <label>部门负责人 <input id="deptManagerInput" placeholder="例如 王经理" /></label>
           <button id="addDeptBtn">新增部门</button>
         </div>
         <table id="deptTable">
-          <thead><tr><th>ID</th><th>编码</th><th>名称</th><th>操作</th></tr></thead>
+          <thead><tr><th>ID</th><th>编码</th><th>名称</th><th>部门负责人</th><th>操作</th></tr></thead>
           <tbody></tbody>
         </table>
       </section>
@@ -184,11 +211,15 @@
               <option value="bs">资产负债表</option>
               <option value="pl">利润表</option>
               <option value="cf">现金流量表</option>
+              <option value="oe">所有者权益变动表</option>
             </select>
           </label>
           <button id="generateReportBtn">生成报表</button>
           <button id="recomputeReportBtn">重算版本</button>
           <button id="exportCurrentReportBtn">导出当前报表CSV</button>
+          <input type="file" id="reportImportFile" accept=".csv,.txt,.xls,.xlsx" />
+          <button id="importReportBtn">导入报表（Excel另存CSV）</button>
+          <button id="saveReportEditBtn">保存当前报表修改</button>
         </div>
         <div id="reportMeta" class="muted">未生成报表</div>
         <table id="reportTable"><thead><tr><th>项目</th><th>金额</th></tr></thead><tbody></tbody></table>
@@ -210,6 +241,7 @@
               <option value="bs">资产负债表</option>
               <option value="pl">利润表</option>
               <option value="cf">现金流量表</option>
+              <option value="oe">所有者权益变动表</option>
             </select>
           </label>
           <button id="generateMergeBtn">生成合并报表</button>

@@ -177,6 +177,23 @@ const el = {
   deptNameInput: document.querySelector("#deptNameInput"),
   addDeptBtn: document.querySelector("#addDeptBtn"),
   deptTableBody: document.querySelector("#deptTable tbody"),
+  orgCreditCodeInput: document.querySelector("#orgCreditCodeInput"),
+  orgAddressInput: document.querySelector("#orgAddressInput"),
+  orgContactInput: document.querySelector("#orgContactInput"),
+  orgPhoneInput: document.querySelector("#orgPhoneInput"),
+  personKindSelect: document.querySelector("#personKindSelect"),
+  personIdNoInput: document.querySelector("#personIdNoInput"),
+  personAddressInput: document.querySelector("#personAddressInput"),
+  personPhoneInput: document.querySelector("#personPhoneInput"),
+  personDeptSelect: document.querySelector("#personDeptSelect"),
+  transferPersonSelect: document.querySelector("#transferPersonSelect"),
+  transferDeptSelect: document.querySelector("#transferDeptSelect"),
+  transferDateInput: document.querySelector("#transferDateInput"),
+  transferDeptBtn: document.querySelector("#transferDeptBtn"),
+  deptManagerInput: document.querySelector("#deptManagerInput"),
+  reportImportFile: document.querySelector("#reportImportFile"),
+  importReportBtn: document.querySelector("#importReportBtn"),
+  saveReportEditBtn: document.querySelector("#saveReportEditBtn"),
   downloadSubjectTemplateBtn: document.querySelector("#downloadSubjectTemplateBtn"),
   subjectImportFile: document.querySelector("#subjectImportFile"),
   importSubjectsBtn: document.querySelector("#importSubjectsBtn"),
@@ -193,7 +210,7 @@ function getActiveBook() {
 }
 
 function reportTypeName(type) {
-  return type === "bs" ? "资产负债表" : type === "pl" ? "利润表" : "现金流量表";
+  return type === "bs" ? "资产负债表" : type === "pl" ? "利润表" : type === "cf" ? "现金流量表" : "所有者权益变动表";
 }
 
 
@@ -214,14 +231,39 @@ function isAssistItemUsed(book, assist) {
     || (e.assistType === assist.type && (e.assistName === assist.name || e.assist === assist.name))));
 }
 
+function personDeptHistoryText(person) {
+  const hist = person.meta?.deptHistory || [];
+  if (!hist.length) return "-";
+  return hist.map((h) => `${h.date}:${h.deptName}`).join(" | ");
+}
+
+function refreshArchiveSelectOptions(book) {
+  const deptOptions = [`<option value="">请选择部门</option>`, ...book.assistItems.filter((x) => x.type === "DEPT").map((d) => `<option value="${d.id}">${d.code} ${d.name}</option>`)].join("");
+  if (el.personDeptSelect) el.personDeptSelect.innerHTML = deptOptions;
+  if (el.transferDeptSelect) el.transferDeptSelect.innerHTML = deptOptions;
+
+  const personOptions = [`<option value="">请选择人员</option>`, ...book.assistItems.filter((x) => x.type === "PERSON").map((p) => `<option value="${p.id}">${p.code} ${p.name}</option>`)].join("");
+  if (el.transferPersonSelect) el.transferPersonSelect.innerHTML = personOptions;
+}
+
 function renderArchiveTable(type, tbody) {
   const book = getActiveBook();
   if (!tbody) return;
   tbody.innerHTML = "";
   book.assistItems.filter((x) => x.type === type).forEach((a) => {
     const used = isAssistItemUsed(book, a);
+    const action = used ? "已使用，不可删除" : `<button data-archive-action="delete" data-type="${type}" data-id="${a.id}">删除</button>`;
+    const meta = a.meta || {};
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${a.id}</td><td>${a.code}</td><td>${a.name}</td><td>${used ? "已使用，不可删除" : `<button data-archive-action="delete" data-type="${type}" data-id="${a.id}">删除</button>`}</td>`;
+
+    if (type === "ORG") {
+      tr.innerHTML = `<td>${a.id}</td><td>${a.code}</td><td>${a.name}</td><td>${meta.creditCode || ""}</td><td>${meta.address || ""}</td><td>${meta.contact || ""}</td><td>${meta.phone || ""}</td><td>${action}</td>`;
+    } else if (type === "PERSON") {
+      const kindName = meta.kind === "EMPLOYEE" ? "员工" : "外部";
+      tr.innerHTML = `<td>${a.id}</td><td>${a.code}</td><td>${a.name}</td><td>${kindName}</td><td>${meta.idNo || ""}</td><td>${meta.address || ""}</td><td>${meta.phone || ""}</td><td>${personDeptHistoryText(a)}</td><td>${action}</td>`;
+    } else {
+      tr.innerHTML = `<td>${a.id}</td><td>${a.code}</td><td>${a.name}</td><td>${meta.manager || ""}</td><td>${action}</td>`;
+    }
     tbody.appendChild(tr);
   });
 }
@@ -242,13 +284,14 @@ function renderAssistProjects() {
   renderArchiveTable("ORG", el.orgTableBody);
   renderArchiveTable("PERSON", el.personTableBody);
   renderArchiveTable("DEPT", el.deptTableBody);
+  refreshArchiveSelectOptions(book);
 }
 
-function addArchiveItem(type, code, name) {
+function addArchiveItem(type, code, name, meta = {}) {
   const book = getActiveBook();
   if (!code || !name) return "档案编码和名称不能为空";
   if (book.assistItems.some((x) => x.type === type && x.code === code)) return "同类别下编码已存在";
-  book.assistItems.push({ id: book.assistSeq++, type, code, name });
+  book.assistItems.push({ id: book.assistSeq++, type, code, name, meta });
   saveState();
   renderAssistProjects();
   refreshAssistOptionsInEntryRows();
@@ -371,6 +414,21 @@ function computeRowsFromMovements(reportType, posted, movements) {
       if (isExpense) expense += Math.max(netDebit, 0);
     });
     return [["营业收入", income], ["期间费用", expense], ["利润总额", income - expense]];
+  }
+
+  if (reportType === "oe") {
+    let income = 0;
+    let expense = 0;
+    movements.forEach((m) => {
+      const netCredit = m.credit - m.debit;
+      const netDebit = m.debit - m.credit;
+      const isIncome = m.name.includes("收入") || m.code.startsWith("5") || m.code.startsWith("6");
+      const isExpense = m.name.includes("费用") || m.name.includes("成本") || m.name.includes("税金") || m.code.startsWith("64") || m.code.startsWith("66") || m.code.startsWith("56");
+      if (isIncome) income += Math.max(netCredit, 0);
+      if (isExpense) expense += Math.max(netDebit, 0);
+    });
+    const profit = income - expense;
+    return [["期初所有者权益", 0], ["本期净利润", profit], ["其他综合变动", 0], ["期末所有者权益", profit]];
   }
 
   let inflow = 0;
@@ -620,7 +678,7 @@ function renderVouchers() {
   book.vouchers.forEach((v) => {
     const statusCls = v.status === "posted" ? "status-posted" : v.status === "audited" ? "status-audited" : "status-draft";
     const actions = [];
-    if (v.status === "draft") actions.push(`<button data-action="audit" data-id="${v.id}">审核</button>`);
+    if (v.status === "draft") actions.push(`<button data-action="audit" data-id="${v.id}">审核</button>`, `<button data-action="delete" data-id="${v.id}">删除</button>`);
     if (v.status === "audited") actions.push(`<button data-action="unaudit" data-id="${v.id}">反审核</button>`, `<button data-action="post" data-id="${v.id}">记账</button>`);
     if (v.status === "posted") actions.push(`<button data-action="unpost" data-id="${v.id}">反记账</button>`);
 
@@ -670,9 +728,9 @@ function renderCurrentReport() {
     return;
   }
   el.reportMeta.textContent = `当前报表：${cur.id} | ${reportTypeName(cur.type)} | ${cur.startDate} ~ ${cur.endDate} | ${cur.generatedAt}`;
-  cur.rows.forEach(([n, v]) => {
+  cur.rows.forEach(([n, v], idx) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${n}</td><td>${money(v)}</td>`;
+    tr.innerHTML = `<td><input data-report-edit="name" data-idx="${idx}" value="${n}" /></td><td><input data-report-edit="value" data-idx="${idx}" value="${money(v)}" /></td>`;
     el.reportTableBody.appendChild(tr);
   });
 }
@@ -709,6 +767,28 @@ function renderMergeVersions() {
     tr.innerHTML = `<td>${r.id}</td><td>${reportTypeName(r.type)}</td><td>${r.bookNames.join("、")}</td><td>${r.startDate} ~ ${r.endDate}</td><td>${r.generatedAt}</td><td><button data-merge-action="view" data-id="${r.id}">查看</button><button data-merge-action="export" data-id="${r.id}">导出CSV</button></td>`;
     el.mergeVersionBody.appendChild(tr);
   });
+}
+
+function resequenceVouchers(book) {
+  book.vouchers
+    .sort((a, b) => String(a.id).localeCompare(String(b.id), "zh-Hans-CN"))
+    .forEach((v, idx) => {
+      v.id = `V${String(idx + 1).padStart(4, "0")}`;
+    });
+}
+
+function parseReportRowsFromCsv(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const rows = [];
+  lines.forEach((line, idx) => {
+    const cols = parseCsvLine(line);
+    if (!cols.length) return;
+    if (idx === 0 && (cols[0] === "项目" || cols[0] === "名称")) return;
+    const name = (cols[0] || "").trim();
+    const value = parseAmount(cols[1] || "0");
+    if (name) rows.push([name, value]);
+  });
+  return rows;
 }
 
 function reportToCsv(report, title = "报表") {
@@ -876,24 +956,75 @@ function bindEvents() {
   }
 
   el.addOrgBtn?.addEventListener("click", () => {
-    const err = addArchiveItem("ORG", (el.orgCodeInput.value || "").trim(), (el.orgNameInput.value || "").trim());
+    const err = addArchiveItem(
+      "ORG",
+      (el.orgCodeInput.value || "").trim(),
+      (el.orgNameInput.value || "").trim(),
+      {
+        creditCode: (el.orgCreditCodeInput.value || "").trim(),
+        address: (el.orgAddressInput.value || "").trim(),
+        contact: (el.orgContactInput.value || "").trim(),
+        phone: (el.orgPhoneInput.value || "").trim()
+      }
+    );
     if (err) return alert(err);
-    el.orgCodeInput.value = "";
-    el.orgNameInput.value = "";
+    [el.orgCodeInput, el.orgNameInput, el.orgCreditCodeInput, el.orgAddressInput, el.orgContactInput, el.orgPhoneInput].forEach((x) => { if (x) x.value = ""; });
   });
 
   el.addPersonBtn?.addEventListener("click", () => {
-    const err = addArchiveItem("PERSON", (el.personCodeInput.value || "").trim(), (el.personNameInput.value || "").trim());
+    const kind = el.personKindSelect?.value || "EXTERNAL";
+    const deptId = el.personDeptSelect?.value || "";
+    const book = getActiveBook();
+    const dept = book.assistItems.find((x) => String(x.id) === String(deptId) && x.type === "DEPT");
+    if (kind === "EMPLOYEE" && !dept) return alert("员工档案必须选择所属部门");
+
+    const deptHistory = kind === "EMPLOYEE" && dept
+      ? [{ deptId: dept.id, deptCode: dept.code, deptName: dept.name, date: document.querySelector("#voucherDate")?.value || toDateValue(new Date()) }]
+      : [];
+
+    const err = addArchiveItem(
+      "PERSON",
+      (el.personCodeInput.value || "").trim(),
+      (el.personNameInput.value || "").trim(),
+      {
+        kind,
+        idNo: (el.personIdNoInput.value || "").trim(),
+        address: (el.personAddressInput.value || "").trim(),
+        phone: (el.personPhoneInput.value || "").trim(),
+        deptHistory
+      }
+    );
     if (err) return alert(err);
-    el.personCodeInput.value = "";
-    el.personNameInput.value = "";
+    [el.personCodeInput, el.personNameInput, el.personIdNoInput, el.personAddressInput, el.personPhoneInput].forEach((x) => { if (x) x.value = ""; });
   });
 
   el.addDeptBtn?.addEventListener("click", () => {
-    const err = addArchiveItem("DEPT", (el.deptCodeInput.value || "").trim(), (el.deptNameInput.value || "").trim());
+    const err = addArchiveItem(
+      "DEPT",
+      (el.deptCodeInput.value || "").trim(),
+      (el.deptNameInput.value || "").trim(),
+      { manager: (el.deptManagerInput.value || "").trim() }
+    );
     if (err) return alert(err);
-    el.deptCodeInput.value = "";
-    el.deptNameInput.value = "";
+    [el.deptCodeInput, el.deptNameInput, el.deptManagerInput].forEach((x) => { if (x) x.value = ""; });
+  });
+
+  el.transferDeptBtn?.addEventListener("click", () => {
+    const personId = el.transferPersonSelect?.value || "";
+    const deptId = el.transferDeptSelect?.value || "";
+    const date = el.transferDateInput?.value || toDateValue(new Date());
+    const book = getActiveBook();
+    const person = book.assistItems.find((x) => String(x.id) === String(personId) && x.type === "PERSON");
+    const dept = book.assistItems.find((x) => String(x.id) === String(deptId) && x.type === "DEPT");
+    if (!person) return alert("请选择需要变更部门的人员");
+    if (!dept) return alert("请选择新部门");
+    if ((person.meta?.kind || "EXTERNAL") !== "EMPLOYEE") return alert("仅员工档案可变更部门");
+    person.meta = person.meta || {};
+    person.meta.deptHistory = person.meta.deptHistory || [];
+    person.meta.deptHistory.push({ deptId: dept.id, deptCode: dept.code, deptName: dept.name, date });
+    person.meta.deptHistory.sort((a, b) => a.date.localeCompare(b.date));
+    saveState();
+    renderAssistProjects();
   });
 
   [el.orgTableBody, el.personTableBody, el.deptTableBody].forEach((tbody) => {
@@ -988,6 +1119,15 @@ function bindEvents() {
       renderVoucherDetail();
       return;
     }
+    if (btn.dataset.action === "delete") {
+      if (v.status !== "draft") return alert("仅未审核未记账凭证可删除");
+      book.vouchers = book.vouchers.filter((x) => x.id !== v.id);
+      resequenceVouchers(book);
+      selectedVoucherId = "";
+      saveState();
+      rerenderAll();
+      return;
+    }
     if (btn.dataset.action === "audit") {
       if (v.status !== "draft") return alert("仅草稿状态可审核");
       v.status = "audited";
@@ -1052,6 +1192,36 @@ function bindEvents() {
     const cur = book.reportVersions.find((r) => r.id === book.currentReportId);
     if (!cur) return alert("当前没有可导出的报表");
     downloadCsv(`${book.name}-${cur.id}-${reportTypeName(cur.type)}.csv`, reportToCsv(cur, `${book.name}个别报表`));
+  });
+
+  el.saveReportEditBtn?.addEventListener("click", () => {
+    const book = getActiveBook();
+    const cur = book.reportVersions.find((r) => r.id === book.currentReportId);
+    if (!cur) return alert("当前没有可编辑报表");
+    const names = [...el.reportTableBody.querySelectorAll('input[data-report-edit="name"]')];
+    const values = [...el.reportTableBody.querySelectorAll('input[data-report-edit="value"]')];
+    cur.rows = names.map((n, i) => [n.value.trim() || `项目${i + 1}`, parseAmount(values[i]?.value || "0")]);
+    saveState();
+    rerenderAll();
+    alert("报表格式与内容已保存");
+  });
+
+  el.importReportBtn?.addEventListener("click", async () => {
+    const file = el.reportImportFile?.files?.[0];
+    if (!file) return alert("请选择报表文件（建议Excel另存为CSV）");
+    const text = await file.text();
+    const rows = parseReportRowsFromCsv(text);
+    if (!rows.length) return alert("导入失败：未解析到报表行");
+    const book = getActiveBook();
+    const startDate = document.querySelector("#reportStartDate").value || toDateValue(new Date());
+    const endDate = document.querySelector("#reportEndDate").value || toDateValue(new Date());
+    const type = document.querySelector("#reportTypeSelect").value;
+    const report = { id: `R${String(book.reportSeq).padStart(4, "0")}-I`, type, startDate, endDate, generatedAt: new Date().toLocaleString(), rows };
+    book.reportSeq += 1;
+    book.reportVersions.push(report);
+    book.currentReportId = report.id;
+    saveState();
+    rerenderAll();
   });
 
   el.reportVersionBody.addEventListener("click", (e) => {
