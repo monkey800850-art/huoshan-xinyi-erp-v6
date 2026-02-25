@@ -39,3 +39,6 @@ python -m http.server 8000
 - 数据库：`backend/m1/sql/schema.sql`
 - API 清单：`backend/m1/api/rest-api-list.md`
 - 目录结构：`backend/m1/dir-tree.md`
+
+- 后端最小实现：`backend/m1/src/server.js`
+- 后端冒烟测试：`backend/m1/tests/smoke.mjs`
