@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<page id="voucher-entry" title="凭证录入">
+  <toolbar>
+    <button id="save" text="保存" />
+    <button id="audit" text="审核" />
+    <button id="void" text="作废" confirm="true" />
+  </toolbar>
+
+  <form mode="minimal" layout="flat">
+    <field id="voucherDate" label="凭证日期" required="true" type="date" />
+    <field id="summary" label="摘要" required="true" type="autocomplete" source="historySummary" />
+    <field id="subject" label="科目" required="true" type="autocomplete" source="subjectCatalog" />
+    <field id="amount" label="金额" required="true" type="currency" enterAction="addNextRow" equalAction="autoBalance" />
+    <field id="assist" label="辅助核算" required="false" type="selector" source="assistDimension" />
+  </form>
+
+  <shortcuts>
+    <key code="Enter" action="addNextRow" />
+    <key code="=" action="autoBalanceLastAmount" />
+  </shortcuts>
+</page>

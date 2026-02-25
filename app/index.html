@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phoenix M1+M2+M3 财务原型</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Phoenix M1+M2+M3 财务原型</h1>
+      <p>多账套管理 / 凭证核算 / 个别报表 / 合并报表</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>0. M3 多账套管理（同库多账套模拟）</h2>
+        <div class="row">
+          <label>账套名称 <input id="bookNameInput" placeholder="例如：杭州总公司账套" /></label>
+          <label>法人主体 <input id="legalEntityInput" placeholder="例如：杭州凤凰科技有限公司" /></label>
+          <label><input type="checkbox" id="isLegalEntityChk" checked /> 法人账套</label>
+          <button id="createBookBtn">新建账套</button>
+        </div>
+        <div class="row">
+          <label for="activeBookSelect">当前账套</label>
+          <select id="activeBookSelect"></select>
+          <button id="switchBookBtn">切换账套</button>
+        </div>
+        <table id="bookTable">
+          <thead>
+            <tr><th>账套ID</th><th>账套名称</th><th>法人主体</th><th>类型</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>1. 科目体系初始化（当前账套）</h2>
+        <div class="row">
+          <label for="templateSelect">科目模板</label>
+          <select id="templateSelect">
+            <option value="small">小企业会计准则</option>
+            <option value="enterprise">企业会计准则</option>
+          </select>
+          <button id="initSubjectsBtn">初始化科目</button>
+        </div>
+        <table id="subjectsTable">
+          <thead><tr><th>编码</th><th>名称</th><th>方向</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>2. 凭证录入（Enter 新增行，最后一行金额输入 = 自动平衡）</h2>
+        <div class="row">
+          <label>日期 <input type="date" id="voucherDate" /></label>
+          <label>摘要 <input type="text" id="voucherSummary" placeholder="例如：支付办公费" /></label>
+        </div>
+        <table id="entryTable">
+          <thead>
+            <tr><th>科目编码</th><th>科目名称</th><th>借方金额</th><th>贷方金额</th><th>辅助项</th><th>操作</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="row">
+          <button id="addRowBtn">新增分录行</button>
+          <button id="saveVoucherBtn">保存凭证</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3. 凭证管理（审核 / 记账）</h2>
+        <table id="voucherTable">
+          <thead><tr><th>编号</th><th>日期</th><th>摘要</th><th>借方合计</th><th>贷方合计</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>4. 发生余额表</h2>
+        <button id="refreshBalanceBtn">刷新发生余额表</button>
+        <table id="balanceTable">
+          <thead><tr><th>科目编码</th><th>科目名称</th><th>借方发生</th><th>贷方发生</th><th>余额</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>5. 科目明细账</h2>
+        <div class="row">
+          <label for="ledgerSubjectSelect">选择科目</label>
+          <select id="ledgerSubjectSelect"></select>
+          <button id="refreshLedgerBtn">查询明细账</button>
+        </div>
+        <table id="ledgerTable">
+          <thead><tr><th>日期</th><th>凭证号</th><th>摘要</th><th>借方</th><th>贷方</th><th>辅助项</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>6. M2 个别财务报表（当前账套）</h2>
+        <div class="row">
+          <label>开始日期 <input type="date" id="reportStartDate" /></label>
+          <label>结束日期 <input type="date" id="reportEndDate" /></label>
+          <label>报表类型
+            <select id="reportTypeSelect">
+              <option value="bs">资产负债表</option>
+              <option value="pl">利润表</option>
+              <option value="cf">现金流量表</option>
+            </select>
+          </label>
+          <button id="generateReportBtn">生成报表</button>
+          <button id="recomputeReportBtn">重算版本</button>
+          <button id="exportCurrentReportBtn">导出当前报表CSV</button>
+        </div>
+        <div id="reportMeta" class="muted">未生成报表</div>
+        <table id="reportTable"><thead><tr><th>项目</th><th>金额</th></tr></thead><tbody></tbody></table>
+
+        <h3>个别报表版本留痕</h3>
+        <table id="reportVersionTable">
+          <thead><tr><th>版本号</th><th>类型</th><th>期间</th><th>生成时间</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>7. M3 合并报表（多账套组合）</h2>
+        <div class="row">
+          <label>开始日期 <input type="date" id="mergeStartDate" /></label>
+          <label>结束日期 <input type="date" id="mergeEndDate" /></label>
+          <label>报表类型
+            <select id="mergeTypeSelect">
+              <option value="bs">资产负债表</option>
+              <option value="pl">利润表</option>
+              <option value="cf">现金流量表</option>
+            </select>
+          </label>
+          <button id="generateMergeBtn">生成合并报表</button>
+          <button id="exportCurrentMergeBtn">导出当前合并CSV</button>
+        </div>
+
+        <div id="mergeBookChecks" class="check-grid"></div>
+
+        <div id="mergeMeta" class="muted">未生成合并报表</div>
+        <table id="mergeTable"><thead><tr><th>项目</th><th>金额</th></tr></thead><tbody></tbody></table>
+
+        <h3>合并报表版本留痕</h3>
+        <table id="mergeVersionTable">
+          <thead><tr><th>版本号</th><th>类型</th><th>范围</th><th>期间</th><th>生成时间</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+
+    <template id="entryRowTemplate">
+      <tr>
+        <td><input class="subject-code" placeholder="1001" /></td>
+        <td><input class="subject-name" placeholder="库存现金" readonly /></td>
+        <td><input class="debit" placeholder="0.00" /></td>
+        <td><input class="credit" placeholder="0.00" /></td>
+        <td><input class="assist" placeholder="客户A/部门" /></td>
+        <td><button class="delete-row">删除</button></td>
+      </tr>
+    </template>
+
+    <script src="./main.js"></script>
+  </body>
+</html>
