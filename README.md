@@ -100,3 +100,80 @@ git push -u origin work
 - `Author identity unknown` / `empty ident name`：未配置 `user.name`/`user.email`。
 - `remote origin already exists`：远程别名 `origin` 已存在，不必重复添加；如 URL 错误请先 `git remote remove origin`。
 - `src refspec work does not match any`：通常是**分支还没有任何提交**，先成功 commit 再 push。
+
+
+## 双远程工作流（按你的实际路径）
+
+你的项目目录是：`/home/x1560/phoenix`（Windows 文件管理器里显示为 `Linux > Ubuntu-22.04 > home > x1560 > phoenix`）。
+
+建议采用双远程：
+- `origin`：你自己的仓库（有写权限，日常 push）
+- `upstream`：主仓库（只拉取同步）
+
+### 一次性初始化（在 `/home/x1560/phoenix` 执行）
+
+```bash
+cd /home/x1560/phoenix
+
+# 1) 配置身份（修复 Author identity unknown）
+git config user.name "x1560"
+git config user.email "<你的GitHub邮箱>"
+
+# 2) 确保 origin 指向你自己的仓库
+git remote remove origin 2>/dev/null || true
+git remote add origin https://github.com/monkey800850-art/huoshan-xinyi-erp-v6.git
+
+# 3) 新增 upstream（替换为团队主仓地址）
+# 示例：git remote add upstream https://github.com/<org>/<repo>.git
+# 若你当前没有主仓，可先跳过这一步
+
+# 4) 查看远程配置
+git remote -v
+```
+
+### 首次提交并推送 `work` 分支
+
+```bash
+cd /home/x1560/phoenix
+
+git add .
+git commit -m "init phoenix local workspace"
+
+git checkout -B work
+git push -u origin work
+```
+
+### 日常“持续同步 + 持续提交”
+
+```bash
+cd /home/x1560/phoenix
+
+# A. 开工前：先同步（有 upstream 时）
+git checkout work
+git fetch upstream
+git rebase upstream/main
+# rebase 后推送需要安全强推
+git push --force-with-lease origin work
+
+# B. 开发后：提交到你的 origin
+git add .
+git commit -m "feat: 本次改动说明"
+git push origin work
+```
+
+### 没有 upstream 时（仅单仓协作）
+
+```bash
+cd /home/x1560/phoenix
+git checkout work
+git pull --rebase origin work
+# 开发后照常提交
+git add .
+git commit -m "feat: 本次改动说明"
+git push origin work
+```
+
+### 快速排错
+- `Author identity unknown`：先执行 `git config user.name/user.email`。
+- `remote origin already exists`：说明 origin 已存在，不要重复 add；必要时先 remove 再 add。
+- `src refspec work does not match any`：分支没有提交，先 `git add && git commit` 再 `git push`。
