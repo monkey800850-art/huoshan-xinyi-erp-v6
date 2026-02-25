@@ -67,21 +67,56 @@
 
 
       <section class="card">
-        <h2>1.5 辅助项目管理（单位 / 个人 / 部门）</h2>
+        <h2>1.5 档案管理（单位 / 个人 / 部门）</h2>
+
+        <h3>单位档案</h3>
+        <div class="row">
+          <label>单位编码 <input id="orgCodeInput" placeholder="例如 CUST001" /></label>
+          <label>单位名称 <input id="orgNameInput" placeholder="例如 杭州A客户" /></label>
+          <button id="addOrgBtn">新增单位</button>
+        </div>
+        <table id="orgTable">
+          <thead><tr><th>ID</th><th>编码</th><th>名称</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h3>个人档案</h3>
+        <div class="row">
+          <label>个人编码 <input id="personCodeInput" placeholder="例如 EMP001" /></label>
+          <label>个人姓名 <input id="personNameInput" placeholder="例如 张三" /></label>
+          <button id="addPersonBtn">新增个人</button>
+        </div>
+        <table id="personTable">
+          <thead><tr><th>ID</th><th>编码</th><th>姓名</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h3>部门档案</h3>
+        <div class="row">
+          <label>部门编码 <input id="deptCodeInput" placeholder="例如 D001" /></label>
+          <label>部门名称 <input id="deptNameInput" placeholder="例如 财务部" /></label>
+          <button id="addDeptBtn">新增部门</button>
+        </div>
+        <table id="deptTable">
+          <thead><tr><th>ID</th><th>编码</th><th>名称</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>1.6 辅助项目管理（关联单位/个人/部门档案）</h2>
         <div class="row">
           <label>类别
             <select id="assistManageType">
+              <option value="">全部</option>
               <option value="ORG">单位（客户/供应商）</option>
               <option value="PERSON">个人（外部/员工）</option>
               <option value="DEPT">部门</option>
             </select>
           </label>
-          <label>编码 <input id="assistCodeInput" placeholder="例如 CUST001 / EMP001 / D001" /></label>
-          <label>名称 <input id="assistNameInput" placeholder="例如 杭州A客户 / 张三 / 财务部" /></label>
-          <button id="addAssistBtn">新增辅助项目</button>
         </div>
         <table id="assistTable">
-          <thead><tr><th>ID</th><th>类别</th><th>编码</th><th>名称</th><th>操作</th></tr></thead>
+          <thead><tr><th>ID</th><th>类别</th><th>编码</th><th>名称</th><th>来源档案</th><th>状态</th></tr></thead>
           <tbody></tbody>
         </table>
       </section>

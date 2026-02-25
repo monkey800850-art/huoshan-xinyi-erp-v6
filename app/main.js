@@ -164,9 +164,19 @@ const el = {
   aiCheckBody: document.querySelector("#aiCheckTable tbody"),
   aiHint: document.querySelector("#aiHint"),
   assistTypeSelect: document.querySelector("#assistManageType"),
-  assistCodeInput: document.querySelector("#assistCodeInput"),
-  assistNameInput: document.querySelector("#assistNameInput"),
   assistTableBody: document.querySelector("#assistTable tbody"),
+  orgCodeInput: document.querySelector("#orgCodeInput"),
+  orgNameInput: document.querySelector("#orgNameInput"),
+  addOrgBtn: document.querySelector("#addOrgBtn"),
+  orgTableBody: document.querySelector("#orgTable tbody"),
+  personCodeInput: document.querySelector("#personCodeInput"),
+  personNameInput: document.querySelector("#personNameInput"),
+  addPersonBtn: document.querySelector("#addPersonBtn"),
+  personTableBody: document.querySelector("#personTable tbody"),
+  deptCodeInput: document.querySelector("#deptCodeInput"),
+  deptNameInput: document.querySelector("#deptNameInput"),
+  addDeptBtn: document.querySelector("#addDeptBtn"),
+  deptTableBody: document.querySelector("#deptTable tbody"),
   downloadSubjectTemplateBtn: document.querySelector("#downloadSubjectTemplateBtn"),
   subjectImportFile: document.querySelector("#subjectImportFile"),
   importSubjectsBtn: document.querySelector("#importSubjectsBtn"),
@@ -199,6 +209,23 @@ function getAssistById(book, id) {
   return book.assistItems.find((x) => String(x.id) === String(id));
 }
 
+function isAssistItemUsed(book, assist) {
+  return book.vouchers.some((v) => v.entries.some((e) => String(e.assistId || "") === String(assist.id)
+    || (e.assistType === assist.type && (e.assistName === assist.name || e.assist === assist.name))));
+}
+
+function renderArchiveTable(type, tbody) {
+  const book = getActiveBook();
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  book.assistItems.filter((x) => x.type === type).forEach((a) => {
+    const used = isAssistItemUsed(book, a);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${a.id}</td><td>${a.code}</td><td>${a.name}</td><td>${used ? "已使用，不可删除" : `<button data-archive-action="delete" data-type="${type}" data-id="${a.id}">删除</button>`}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
 function renderAssistProjects() {
   const book = getActiveBook();
   if (!el.assistTableBody) return;
@@ -206,10 +233,26 @@ function renderAssistProjects() {
   const rows = type ? book.assistItems.filter((x) => x.type === type) : book.assistItems;
   el.assistTableBody.innerHTML = "";
   rows.forEach((a) => {
+    const used = isAssistItemUsed(book, a);
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${a.id}</td><td>${assistTypeName(a.type)}</td><td>${a.code}</td><td>${a.name}</td><td><button data-assist-action="delete" data-id="${a.id}">删除</button></td>`;
+    tr.innerHTML = `<td>${a.id}</td><td>${assistTypeName(a.type)}</td><td>${a.code}</td><td>${a.name}</td><td>${assistTypeName(a.type)}档案</td><td>${used ? "已使用" : "未使用"}</td>`;
     el.assistTableBody.appendChild(tr);
   });
+
+  renderArchiveTable("ORG", el.orgTableBody);
+  renderArchiveTable("PERSON", el.personTableBody);
+  renderArchiveTable("DEPT", el.deptTableBody);
+}
+
+function addArchiveItem(type, code, name) {
+  const book = getActiveBook();
+  if (!code || !name) return "档案编码和名称不能为空";
+  if (book.assistItems.some((x) => x.type === type && x.code === code)) return "同类别下编码已存在";
+  book.assistItems.push({ id: book.assistSeq++, type, code, name });
+  saveState();
+  renderAssistProjects();
+  refreshAssistOptionsInEntryRows();
+  return "";
 }
 
 function fillAssistOptionsForRow(tr, defaults = {}) {
@@ -832,31 +875,40 @@ function bindEvents() {
     });
   }
 
-  document.querySelector("#addAssistBtn")?.addEventListener("click", () => {
-    const book = getActiveBook();
-    const type = el.assistTypeSelect.value;
-    const code = (el.assistCodeInput.value || "").trim();
-    const name = (el.assistNameInput.value || "").trim();
-    if (!code || !name) return alert("辅助项编码和名称不能为空");
-    if (book.assistItems.some((x) => x.type === type && x.code === code)) return alert("同类别下编码已存在");
-    book.assistItems.push({ id: book.assistSeq++, type, code, name });
-    el.assistCodeInput.value = "";
-    el.assistNameInput.value = "";
-    saveState();
-    renderAssistProjects();
-    refreshAssistOptionsInEntryRows();
+  el.addOrgBtn?.addEventListener("click", () => {
+    const err = addArchiveItem("ORG", (el.orgCodeInput.value || "").trim(), (el.orgNameInput.value || "").trim());
+    if (err) return alert(err);
+    el.orgCodeInput.value = "";
+    el.orgNameInput.value = "";
   });
 
-  el.assistTableBody?.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-assist-action]");
-    if (!btn) return;
-    const book = getActiveBook();
-    if (btn.dataset.assistAction === "delete") {
-      book.assistItems = book.assistItems.filter((x) => String(x.id) !== String(btn.dataset.id));
+  el.addPersonBtn?.addEventListener("click", () => {
+    const err = addArchiveItem("PERSON", (el.personCodeInput.value || "").trim(), (el.personNameInput.value || "").trim());
+    if (err) return alert(err);
+    el.personCodeInput.value = "";
+    el.personNameInput.value = "";
+  });
+
+  el.addDeptBtn?.addEventListener("click", () => {
+    const err = addArchiveItem("DEPT", (el.deptCodeInput.value || "").trim(), (el.deptNameInput.value || "").trim());
+    if (err) return alert(err);
+    el.deptCodeInput.value = "";
+    el.deptNameInput.value = "";
+  });
+
+  [el.orgTableBody, el.personTableBody, el.deptTableBody].forEach((tbody) => {
+    tbody?.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-archive-action]");
+      if (!btn) return;
+      const book = getActiveBook();
+      const target = book.assistItems.find((x) => String(x.id) === String(btn.dataset.id) && x.type === btn.dataset.type);
+      if (!target) return;
+      if (isAssistItemUsed(book, target)) return alert("该档案已在凭证中使用，不能删除");
+      book.assistItems = book.assistItems.filter((x) => String(x.id) !== String(target.id));
       saveState();
       renderAssistProjects();
       refreshAssistOptionsInEntryRows();
-    }
+    });
   });
 
   document.querySelector("#initSubjectsBtn").addEventListener("click", () => {
