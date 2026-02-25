@@ -34,3 +34,8 @@ python -m http.server 8000
 ```
 
 打开：`http://localhost:8000/app/`
+
+## 后端 M1 设计文档
+- 数据库：`backend/m1/sql/schema.sql`
+- API 清单：`backend/m1/api/rest-api-list.md`
+- 目录结构：`backend/m1/dir-tree.md`
