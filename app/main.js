@@ -1,4 +1,4 @@
-const STORAGE_KEY = "phoenix_m1_m2_m3_data";
+const STORAGE_KEY = "phoenix_m1_m2_m3_m4_data";
 
 const SUBJECT_TEMPLATES = {
   small: [
@@ -20,6 +20,17 @@ const SUBJECT_TEMPLATES = {
     { code: "6602", name: "管理费用", direction: "借" }
   ]
 };
+
+const SUMMARY_LIBRARY = [
+  "支付办公费",
+  "支付房租",
+  "支付工资",
+  "收到货款",
+  "采购商品入库",
+  "支付供应商货款",
+  "计提社保公积金",
+  "计提折旧"
+];
 
 function toDateValue(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -52,6 +63,13 @@ function emptyBook(id = "B0001", name = "默认账套") {
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
+    const old = localStorage.getItem("phoenix_m1_m2_m3_data");
+    if (old) {
+      const s = JSON.parse(old);
+      if (s.books) {
+        return { ...s, mergeSeq: s.mergeSeq || 1, mergeVersions: s.mergeVersions || [], currentMergeId: s.currentMergeId || "" };
+      }
+    }
     const book = emptyBook();
     return {
       books: [book],
@@ -75,7 +93,6 @@ function loadState() {
     };
   }
 
-  // backward compatibility from M1/M2 single-book storage
   const migrated = emptyBook("B0001", "迁移账套");
   migrated.subjects = s.subjects || [];
   migrated.vouchers = s.vouchers || [];
@@ -93,11 +110,11 @@ function loadState() {
   };
 }
 
+let state = loadState();
+
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
-
-let state = loadState();
 
 const el = {
   activeBookSelect: document.querySelector("#activeBookSelect"),
@@ -114,7 +131,9 @@ const el = {
   mergeChecks: document.querySelector("#mergeBookChecks"),
   mergeTableBody: document.querySelector("#mergeTable tbody"),
   mergeVersionBody: document.querySelector("#mergeVersionTable tbody"),
-  mergeMeta: document.querySelector("#mergeMeta")
+  mergeMeta: document.querySelector("#mergeMeta"),
+  aiCheckBody: document.querySelector("#aiCheckTable tbody"),
+  aiHint: document.querySelector("#aiHint")
 };
 
 function getActiveBook() {
@@ -195,21 +214,12 @@ function computeRowsFromMovements(reportType, posted, movements) {
 function renderBooks() {
   const active = getActiveBook();
   el.activeBookSelect.innerHTML = state.books.map((b) => `<option value="${b.id}" ${b.id === active.id ? "selected" : ""}>${b.id} ${b.name}</option>`).join("");
-
   el.bookTableBody.innerHTML = "";
   state.books.forEach((b) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${b.id}</td>
-      <td>${b.name}</td>
-      <td>${b.legalEntity || ""}</td>
-      <td>${b.isLegalEntity ? "法人账套" : "非法人账套"}</td>
-      <td>${b.id === active.id ? "当前" : ""}</td>
-      <td><button data-book-action="use" data-id="${b.id}">使用</button></td>
-    `;
+    tr.innerHTML = `<td>${b.id}</td><td>${b.name}</td><td>${b.legalEntity || ""}</td><td>${b.isLegalEntity ? "法人账套" : "非法人账套"}</td><td>${b.id === active.id ? "当前" : ""}</td><td><button data-book-action="use" data-id="${b.id}">使用</button></td>`;
     el.bookTableBody.appendChild(tr);
   });
-
   el.mergeChecks.innerHTML = state.books.map((b) => `<label><input type="checkbox" data-merge-book="${b.id}" /> ${b.name}</label>`).join(" ");
 }
 
@@ -239,8 +249,7 @@ function addEntryRow(defaults = {}) {
   assistInput.value = defaults.assist || "";
 
   function fillName() {
-    const book = getActiveBook();
-    const s = book.subjects.find((x) => x.code === codeInput.value.trim());
+    const s = getActiveBook().subjects.find((x) => x.code === codeInput.value.trim());
     nameInput.value = s ? s.name : "";
   }
 
@@ -293,8 +302,7 @@ function entryRowsToData() {
 function autoBalanceForLastRow(currentRow) {
   const rows = [...el.entryTableBody.querySelectorAll("tr")];
   if (rows[rows.length - 1] !== currentRow) return;
-  const data = entryRowsToData();
-  const diff = data.reduce((sum, e) => sum + e.debit - e.credit, 0);
+  const diff = entryRowsToData().reduce((sum, e) => sum + e.debit - e.credit, 0);
   if (Math.abs(diff) < 0.0001) return;
   const debitInput = currentRow.querySelector(".debit");
   const creditInput = currentRow.querySelector(".credit");
@@ -326,11 +334,7 @@ function renderVouchers() {
   book.vouchers.forEach((v) => {
     const statusCls = v.status === "posted" ? "status-posted" : v.status === "audited" ? "status-audited" : "status-draft";
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${v.id}</td><td>${v.date}</td><td>${v.summary}</td><td>${money(v.totalDebit)}</td><td>${money(v.totalCredit)}</td>
-      <td class="${statusCls}">${v.status}</td>
-      <td><button data-action="audit" data-id="${v.id}">审核</button><button data-action="post" data-id="${v.id}">记账</button></td>
-    `;
+    tr.innerHTML = `<td>${v.id}</td><td>${v.date}</td><td>${v.summary}</td><td>${money(v.totalDebit)}</td><td>${money(v.totalCredit)}</td><td class="${statusCls}">${v.status}</td><td><button data-action="audit" data-id="${v.id}">审核</button><button data-action="post" data-id="${v.id}">记账</button></td>`;
     el.voucherTableBody.appendChild(tr);
   });
 }
@@ -430,6 +434,100 @@ function downloadCsv(filename, text) {
   URL.revokeObjectURL(a.href);
 }
 
+function aiSuggestSummary(inputText = "") {
+  const source = inputText || document.querySelector("#voucherSummary").value || "";
+  const match = SUMMARY_LIBRARY.find((item) => source.includes(item.replace("支付", "")) || source.includes(item));
+  return match || SUMMARY_LIBRARY[Math.floor(Math.random() * SUMMARY_LIBRARY.length)];
+}
+
+function findSubjectCodeByKeywords(book, keywords) {
+  const target = book.subjects.find((s) => keywords.some((k) => s.name.includes(k)));
+  return target ? target.code : "";
+}
+
+function aiGenerateVoucherDraft(scenario) {
+  const book = getActiveBook();
+  if (!book.subjects.length) {
+    alert("请先初始化当前账套科目");
+    return;
+  }
+  const text = scenario.trim();
+  const amountMatch = text.match(/(\d+(?:\.\d+)?)/);
+  const amount = amountMatch ? Number(amountMatch[1]) : 1000;
+
+  let debitCode = "";
+  let creditCode = "";
+  let summary = aiSuggestSummary(text);
+
+  if (text.includes("办公") || text.includes("管理费")) {
+    debitCode = findSubjectCodeByKeywords(book, ["管理费用", "税金及附加"]);
+    creditCode = findSubjectCodeByKeywords(book, ["银行存款", "库存现金"]);
+    summary = "支付办公费";
+  } else if (text.includes("收到") || text.includes("收款") || text.includes("货款")) {
+    debitCode = findSubjectCodeByKeywords(book, ["银行存款", "库存现金", "应收账款"]);
+    creditCode = findSubjectCodeByKeywords(book, ["主营业务收入"]);
+    summary = "收到货款";
+  } else if (text.includes("工资")) {
+    debitCode = findSubjectCodeByKeywords(book, ["管理费用"]);
+    creditCode = findSubjectCodeByKeywords(book, ["银行存款", "库存现金"]);
+    summary = "支付工资";
+  }
+
+  if (!debitCode) debitCode = book.subjects[0]?.code || "";
+  if (!creditCode) creditCode = book.subjects[1]?.code || book.subjects[0]?.code || "";
+
+  document.querySelector("#voucherSummary").value = summary;
+  resetEntryForm();
+  el.entryTableBody.innerHTML = "";
+  addEntryRow({ subjectCode: debitCode, debit: amount, credit: 0, assist: "AI草稿" });
+  addEntryRow({ subjectCode: creditCode, debit: 0, credit: amount, assist: "AI草稿" });
+
+  el.aiHint.textContent = `AI已生成草稿：${summary}，金额 ${money(amount)}`;
+}
+
+function aiSmartCheck() {
+  const rows = entryRowsToData();
+  const checks = [];
+  const totalDebit = rows.reduce((sum, r) => sum + r.debit, 0);
+  const totalCredit = rows.reduce((sum, r) => sum + r.credit, 0);
+
+  checks.push({
+    item: "借贷平衡",
+    ok: Math.abs(totalDebit - totalCredit) < 0.0001,
+    suggestion: "使用最后一行金额输入 = 自动补平，或检查金额录入"
+  });
+
+  checks.push({
+    item: "摘要填写",
+    ok: !!document.querySelector("#voucherSummary").value.trim(),
+    suggestion: "可点击【摘要智能联想】自动填充常用摘要"
+  });
+
+  const hasInvalidSubject = rows.some((r) => !getActiveBook().subjects.some((s) => s.code === r.subjectCode));
+  checks.push({
+    item: "科目有效性",
+    ok: !hasInvalidSubject,
+    suggestion: "请输入已初始化的科目编码"
+  });
+
+  const sameSide = rows.some((r) => r.debit > 0 && r.credit > 0);
+  checks.push({
+    item: "分录单边金额",
+    ok: !sameSide,
+    suggestion: "每行仅填写借方或贷方其中一侧"
+  });
+
+  el.aiCheckBody.innerHTML = "";
+  checks.forEach((c) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${c.item}</td><td class="${c.ok ? "ok" : "warn"}">${c.ok ? "通过" : "异常"}</td><td>${c.ok ? "-" : c.suggestion}</td>`;
+    el.aiCheckBody.appendChild(tr);
+  });
+
+  const passCount = checks.filter((c) => c.ok).length;
+  el.aiHint.textContent = `智能纠错完成：${passCount}/${checks.length} 项通过`;
+}
+
 function rerenderAll() {
   renderBooks();
   renderSubjects();
@@ -441,6 +539,7 @@ function rerenderAll() {
   renderCurrentMerge();
   renderMergeVersions();
   resetEntryForm();
+  el.aiCheckBody.innerHTML = "";
 }
 
 function bindEvents() {
@@ -540,14 +639,7 @@ function bindEvents() {
     const type = document.querySelector("#reportTypeSelect").value;
     if (!startDate || !endDate) return alert("请先选择报表期间");
     if (endDate < startDate) return alert("结束日期不能早于开始日期");
-    const report = {
-      id: `R${String(book.reportSeq).padStart(4, "0")}`,
-      type,
-      startDate,
-      endDate,
-      generatedAt: new Date().toLocaleString(),
-      rows: buildReportRows(book, type, startDate, endDate)
-    };
+    const report = { id: `R${String(book.reportSeq).padStart(4, "0")}`, type, startDate, endDate, generatedAt: new Date().toLocaleString(), rows: buildReportRows(book, type, startDate, endDate) };
     book.reportSeq += 1;
     book.reportVersions.push(report);
     book.currentReportId = report.id;
@@ -562,14 +654,7 @@ function bindEvents() {
     const type = document.querySelector("#reportTypeSelect").value;
     if (!startDate || !endDate) return alert("请先选择报表期间");
     if (endDate < startDate) return alert("结束日期不能早于开始日期");
-    const report = {
-      id: `R${String(book.reportSeq).padStart(4, "0")}-R`,
-      type,
-      startDate,
-      endDate,
-      generatedAt: new Date().toLocaleString(),
-      rows: buildReportRows(book, type, startDate, endDate)
-    };
+    const report = { id: `R${String(book.reportSeq).padStart(4, "0")}-R`, type, startDate, endDate, generatedAt: new Date().toLocaleString(), rows: buildReportRows(book, type, startDate, endDate) };
     book.reportSeq += 1;
     book.reportVersions.push(report);
     book.currentReportId = report.id;
@@ -605,31 +690,16 @@ function bindEvents() {
     const type = document.querySelector("#mergeTypeSelect").value;
     if (!startDate || !endDate) return alert("请先选择合并期间");
     if (endDate < startDate) return alert("结束日期不能早于开始日期");
-
     const selectedIds = [...document.querySelectorAll("input[data-merge-book]:checked")].map((x) => x.dataset.mergeBook);
     if (!selectedIds.length) return alert("请至少选择一个账套用于合并");
-
     const selectedBooks = state.books.filter((b) => selectedIds.includes(b.id));
     const aggregate = new Map();
-
     selectedBooks.forEach((book) => {
-      const rows = buildReportRows(book, type, startDate, endDate);
-      rows.forEach(([name, value]) => {
+      buildReportRows(book, type, startDate, endDate).forEach(([name, value]) => {
         aggregate.set(name, (aggregate.get(name) || 0) + value);
       });
     });
-
-    const merge = {
-      id: `MR${String(state.mergeSeq).padStart(4, "0")}`,
-      type,
-      startDate,
-      endDate,
-      bookIds: selectedBooks.map((b) => b.id),
-      bookNames: selectedBooks.map((b) => b.name),
-      generatedAt: new Date().toLocaleString(),
-      rows: [...aggregate.entries()]
-    };
-
+    const merge = { id: `MR${String(state.mergeSeq).padStart(4, "0")}`, type, startDate, endDate, bookIds: selectedBooks.map((b) => b.id), bookNames: selectedBooks.map((b) => b.name), generatedAt: new Date().toLocaleString(), rows: [...aggregate.entries()] };
     state.mergeSeq += 1;
     state.mergeVersions.push(merge);
     state.currentMergeId = merge.id;
@@ -656,6 +726,19 @@ function bindEvents() {
     }
     downloadCsv(`${report.id}-${reportTypeName(report.type)}.csv`, reportToCsv(report, `合并范围:${report.bookNames.join("+")}`));
   });
+
+  document.querySelector("#suggestSummaryBtn").addEventListener("click", () => {
+    const suggestion = aiSuggestSummary(document.querySelector("#aiScenarioInput").value.trim());
+    document.querySelector("#voucherSummary").value = suggestion;
+    el.aiHint.textContent = `摘要建议：${suggestion}`;
+  });
+
+  document.querySelector("#aiGenerateVoucherBtn").addEventListener("click", () => {
+    const scenario = document.querySelector("#aiScenarioInput").value;
+    aiGenerateVoucherDraft(scenario);
+  });
+
+  document.querySelector("#smartCheckBtn").addEventListener("click", aiSmartCheck);
 }
 
 function boot() {
@@ -669,6 +752,7 @@ function boot() {
 
   rerenderAll();
   bindEvents();
+  el.aiHint.textContent = "可使用 AI 生成凭证草稿和智能纠错";
 }
 
 boot();

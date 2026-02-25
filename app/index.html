@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Phoenix M1+M2+M3 财务原型</title>
+    <title>Phoenix M1+M2+M3+M4 财务原型</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <header>
-      <h1>Phoenix M1+M2+M3 财务原型</h1>
-      <p>多账套管理 / 凭证核算 / 个别报表 / 合并报表</p>
+      <h1>Phoenix M1+M2+M3+M4 财务原型</h1>
+      <p>多账套管理 / 凭证核算 / 个别报表 / 合并报表 / AI辅助</p>
     </header>
 
     <main>
@@ -148,6 +148,25 @@
         <h3>合并报表版本留痕</h3>
         <table id="mergeVersionTable">
           <thead><tr><th>版本号</th><th>类型</th><th>范围</th><th>期间</th><th>生成时间</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>8. M4 智能助手（摘要联想 / AI凭证草稿 / 智能纠错）</h2>
+        <div class="row">
+          <label>业务描述
+            <input id="aiScenarioInput" placeholder="例如：支付3月办公费2000元，银行存款支付" />
+          </label>
+          <button id="aiGenerateVoucherBtn">AI生成凭证草稿</button>
+          <button id="smartCheckBtn">智能纠错检查</button>
+        </div>
+        <div class="row">
+          <button id="suggestSummaryBtn">摘要智能联想</button>
+          <span id="aiHint" class="muted">助手待命</span>
+        </div>
+        <table id="aiCheckTable">
+          <thead><tr><th>检查项</th><th>结果</th><th>建议</th></tr></thead>
           <tbody></tbody>
         </table>
       </section>
