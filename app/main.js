@@ -45,6 +45,29 @@ function parseAmount(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function extractScenarioDate(text) {
+  const m = text.match(/((?:19|20)\d{2})年\s*(1[0-2]|0?[1-9])月/);
+  if (!m) return "";
+  return `${m[1]}-${String(Number(m[2])).padStart(2, "0")}-01`;
+}
+
+function extractScenarioAmount(text) {
+  const wanYuan = text.match(/(\d+(?:\.\d+)?)\s*万\s*元?/);
+  if (wanYuan) return Number(wanYuan[1]) * 10000;
+  const qianYuan = text.match(/(\d+(?:\.\d+)?)\s*千\s*元?/);
+  if (qianYuan) return Number(qianYuan[1]) * 1000;
+  const yuan = text.match(/(\d+(?:\.\d+)?)\s*元/);
+  if (yuan) return Number(yuan[1]);
+
+  const textWithoutDate = text
+    .replace(/(?:19|20)\d{2}年\s*(?:1[0-2]|0?[1-9])月(?:\s*\d{1,2}日)?/g, "")
+    .replace(/(?:19|20)\d{2}-\d{1,2}-\d{1,2}/g, "")
+    .replace(/(?:19|20)\d{2}\/\d{1,2}\/\d{1,2}/g, "");
+
+  const plain = textWithoutDate.match(/(\d+(?:\.\d+)?)/);
+  return plain ? Number(plain[1]) : 1000;
+}
+
 function emptyBook(id = "B0001", name = "默认账套") {
   return {
     id,
@@ -255,13 +278,31 @@ function computeRowsFromMovements(reportType, posted, movements) {
     let assets = 0;
     let liabilities = 0;
     let equity = 0;
+    let income = 0;
+    let expense = 0;
+
     movements.forEach((m) => {
-      const bal = m.direction === "借" ? m.debit - m.credit : m.credit - m.debit;
-      if (m.code.startsWith("1")) assets += bal;
-      else if (m.code.startsWith("2")) liabilities += bal;
-      else if (m.code.startsWith("3") || m.code.startsWith("4")) equity += bal;
+      const debitNet = m.debit - m.credit;
+      const creditNet = m.credit - m.debit;
+
+      if (m.code.startsWith("1")) {
+        if (debitNet >= 0) assets += debitNet;
+        else liabilities += Math.abs(debitNet);
+      } else if (m.code.startsWith("2")) {
+        if (creditNet >= 0) liabilities += creditNet;
+        else assets += Math.abs(creditNet);
+      } else if (m.code.startsWith("3") || m.code.startsWith("4")) {
+        equity += creditNet;
+      }
+
+      const isIncome = m.name.includes("收入") || ((m.code.startsWith("5") || m.code.startsWith("6")) && m.name.includes("收入"));
+      const isExpense = m.name.includes("费用") || m.name.includes("成本") || m.name.includes("税金") || m.code.startsWith("64") || m.code.startsWith("66") || m.code.startsWith("56");
+      if (isIncome) income += Math.max(creditNet, 0);
+      if (isExpense) expense += Math.max(debitNet, 0);
     });
-    if (equity === 0) equity = assets - liabilities;
+
+    const currentProfit = income - expense;
+    equity += currentProfit;
     return [["资产合计", assets], ["负债合计", liabilities], ["所有者权益合计", equity], ["负债和权益合计", liabilities + equity]];
   }
 
@@ -371,6 +412,23 @@ function addEntryRow(defaults = {}) {
   el.entryTableBody.appendChild(tr);
 }
 
+function isEntryRowEmpty(tr) {
+  const code = tr.querySelector(".subject-code")?.value.trim() || "";
+  const debit = parseAmount(tr.querySelector(".debit")?.value || "");
+  const credit = parseAmount(tr.querySelector(".credit")?.value || "");
+  const assistType = tr.querySelector(".assist-type")?.value || "";
+  const assistId = tr.querySelector(".assist-item")?.value || "";
+  const assistName = tr.querySelector(".assist-text")?.value.trim() || "";
+  return !code && debit === 0 && credit === 0 && !assistType && !assistId && !assistName;
+}
+
+function pruneEmptyEntryRows() {
+  [...el.entryTableBody.querySelectorAll("tr")].forEach((tr) => {
+    if (isEntryRowEmpty(tr)) tr.remove();
+  });
+  if (!el.entryTableBody.children.length) addEntryRow();
+}
+
 function entryRowsToData() {
   const book = getActiveBook();
   return [...el.entryTableBody.querySelectorAll("tr")].map((tr) => {
@@ -423,8 +481,13 @@ function renderVouchers() {
   el.voucherTableBody.innerHTML = "";
   book.vouchers.forEach((v) => {
     const statusCls = v.status === "posted" ? "status-posted" : v.status === "audited" ? "status-audited" : "status-draft";
+    const actions = [];
+    if (v.status === "draft") actions.push(`<button data-action="audit" data-id="${v.id}">审核</button>`);
+    if (v.status === "audited") actions.push(`<button data-action="unaudit" data-id="${v.id}">反审核</button>`, `<button data-action="post" data-id="${v.id}">记账</button>`);
+    if (v.status === "posted") actions.push(`<button data-action="unpost" data-id="${v.id}">反记账</button>`);
+
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${v.id}</td><td>${v.date}</td><td>${v.summary}</td><td>${money(v.totalDebit)}</td><td>${money(v.totalCredit)}</td><td class="${statusCls}">${v.status}</td><td><button data-action="audit" data-id="${v.id}">审核</button><button data-action="post" data-id="${v.id}">记账</button></td>`;
+    tr.innerHTML = `<td>${v.id}</td><td>${v.date}</td><td>${v.summary}</td><td>${money(v.totalDebit)}</td><td>${money(v.totalCredit)}</td><td class="${statusCls}">${v.status}</td><td>${actions.join("")}</td>`;
     el.voucherTableBody.appendChild(tr);
   });
 }
@@ -542,8 +605,8 @@ function aiGenerateVoucherDraft(scenario) {
     return;
   }
   const text = scenario.trim();
-  const amountMatch = text.match(/(\d+(?:\.\d+)?)/);
-  const amount = amountMatch ? Number(amountMatch[1]) : 1000;
+  const amount = extractScenarioAmount(text);
+  const pickedDate = extractScenarioDate(text);
 
   let debitCode = "";
   let creditCode = "";
@@ -567,6 +630,7 @@ function aiGenerateVoucherDraft(scenario) {
   if (!creditCode) creditCode = book.subjects[1]?.code || book.subjects[0]?.code || "";
 
   document.querySelector("#voucherSummary").value = summary;
+  if (pickedDate) document.querySelector("#voucherDate").value = pickedDate;
   resetEntryForm();
   el.entryTableBody.innerHTML = "";
   addEntryRow({ subjectCode: debitCode, debit: amount, credit: 0, assistType: "PERSON", assistName: "AI草稿" });
@@ -712,6 +776,7 @@ function bindEvents() {
 
   document.querySelector("#saveVoucherBtn").addEventListener("click", () => {
     const book = getActiveBook();
+    pruneEmptyEntryRows();
     const entries = entryRowsToData();
     const voucher = {
       id: `V${String(book.seq).padStart(4, "0")}`,
@@ -744,6 +809,14 @@ function bindEvents() {
     if (btn.dataset.action === "post") {
       if (v.status !== "audited") return alert("仅已审核状态可记账");
       v.status = "posted";
+    }
+    if (btn.dataset.action === "unpost") {
+      if (v.status !== "posted") return alert("仅已记账状态可反记账");
+      v.status = "audited";
+    }
+    if (btn.dataset.action === "unaudit") {
+      if (v.status !== "audited") return alert("仅已审核状态可反审核");
+      v.status = "draft";
     }
     saveState();
     rerenderAll();
