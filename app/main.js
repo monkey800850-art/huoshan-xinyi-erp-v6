@@ -53,6 +53,8 @@ function emptyBook(id = "B0001", name = "默认账套") {
     isLegalEntity: true,
     subjects: [],
     vouchers: [],
+    assistItems: [],
+    assistSeq: 1,
     seq: 1,
     reportSeq: 1,
     reportVersions: [],
@@ -83,10 +85,11 @@ function loadState() {
 
   const s = JSON.parse(raw);
   if (s.books && Array.isArray(s.books)) {
+    const books = s.books.map((b) => ({ ...b, assistItems: b.assistItems || [], assistSeq: b.assistSeq || 1 }));
     return {
-      books: s.books,
+      books,
       bookSeq: s.bookSeq || 1,
-      activeBookId: s.activeBookId || (s.books[0] && s.books[0].id) || "",
+      activeBookId: s.activeBookId || (books[0] && books[0].id) || "",
       mergeSeq: s.mergeSeq || 1,
       mergeVersions: s.mergeVersions || [],
       currentMergeId: s.currentMergeId || ""
@@ -96,6 +99,8 @@ function loadState() {
   const migrated = emptyBook("B0001", "迁移账套");
   migrated.subjects = s.subjects || [];
   migrated.vouchers = s.vouchers || [];
+  migrated.assistItems = s.assistItems || [];
+  migrated.assistSeq = s.assistSeq || 1;
   migrated.seq = s.seq || 1;
   migrated.reportSeq = s.reportSeq || 1;
   migrated.reportVersions = s.reportVersions || [];
@@ -133,7 +138,11 @@ const el = {
   mergeVersionBody: document.querySelector("#mergeVersionTable tbody"),
   mergeMeta: document.querySelector("#mergeMeta"),
   aiCheckBody: document.querySelector("#aiCheckTable tbody"),
-  aiHint: document.querySelector("#aiHint")
+  aiHint: document.querySelector("#aiHint"),
+  assistTypeSelect: document.querySelector("#assistManageType"),
+  assistCodeInput: document.querySelector("#assistCodeInput"),
+  assistNameInput: document.querySelector("#assistNameInput"),
+  assistTableBody: document.querySelector("#assistTable tbody")
 };
 
 function getActiveBook() {
@@ -142,6 +151,78 @@ function getActiveBook() {
 
 function reportTypeName(type) {
   return type === "bs" ? "资产负债表" : type === "pl" ? "利润表" : "现金流量表";
+}
+
+
+
+function assistTypeName(type) {
+  if (type === "ORG") return "单位";
+  if (type === "PERSON") return "个人";
+  if (type === "DEPT") return "部门";
+  return "未分类";
+}
+
+function getAssistById(book, id) {
+  return book.assistItems.find((x) => String(x.id) === String(id));
+}
+
+function renderAssistProjects() {
+  const book = getActiveBook();
+  if (!el.assistTableBody) return;
+  const type = el.assistTypeSelect ? el.assistTypeSelect.value : "";
+  const rows = type ? book.assistItems.filter((x) => x.type === type) : book.assistItems;
+  el.assistTableBody.innerHTML = "";
+  rows.forEach((a) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${a.id}</td><td>${assistTypeName(a.type)}</td><td>${a.code}</td><td>${a.name}</td><td><button data-assist-action="delete" data-id="${a.id}">删除</button></td>`;
+    el.assistTableBody.appendChild(tr);
+  });
+}
+
+function fillAssistOptionsForRow(tr, defaults = {}) {
+  const book = getActiveBook();
+  const typeSelect = tr.querySelector(".assist-type");
+  const itemSelect = tr.querySelector(".assist-item");
+  const textInput = tr.querySelector(".assist-text");
+
+  function refreshItems() {
+    const t = typeSelect.value;
+    const list = t ? book.assistItems.filter((x) => x.type === t) : [];
+    itemSelect.innerHTML = `<option value="">选择辅助项</option>` + list.map((x) => `<option value="${x.id}">${x.code} ${x.name}</option>`).join("");
+    if (defaults.assistId) itemSelect.value = String(defaults.assistId);
+  }
+
+  typeSelect.value = defaults.assistType || "";
+  textInput.value = defaults.assistName || "";
+  refreshItems();
+
+  typeSelect.onchange = () => {
+    defaults.assistId = "";
+    refreshItems();
+  };
+
+  itemSelect.onchange = () => {
+    const picked = getAssistById(book, itemSelect.value);
+    if (picked) textInput.value = picked.name;
+  };
+}
+
+function refreshAssistOptionsInEntryRows() {
+  if (!el.entryTableBody) return;
+  el.entryTableBody.querySelectorAll("tr").forEach((tr) => {
+    const typeSelect = tr.querySelector(".assist-type");
+    const itemSelect = tr.querySelector(".assist-item");
+    if (!typeSelect || !itemSelect) return;
+
+    const selectedType = typeSelect.value || "";
+    const selectedId = itemSelect.value || "";
+    fillAssistOptionsForRow(tr, { assistType: selectedType, assistId: selectedId, assistName: tr.querySelector(".assist-text")?.value || "" });
+
+    const currentValue = itemSelect.value;
+    if (selectedId && String(currentValue) !== String(selectedId)) {
+      itemSelect.value = "";
+    }
+  });
 }
 
 function getPostedVouchers(book, startDate = "", endDate = "") {
@@ -241,12 +322,18 @@ function addEntryRow(defaults = {}) {
   const nameInput = tr.querySelector(".subject-name");
   const debitInput = tr.querySelector(".debit");
   const creditInput = tr.querySelector(".credit");
-  const assistInput = tr.querySelector(".assist");
+  const assistTypeSelect = tr.querySelector(".assist-type");
+  const assistItemSelect = tr.querySelector(".assist-item");
+  const assistTextInput = tr.querySelector(".assist-text");
 
   codeInput.value = defaults.subjectCode || "";
   debitInput.value = defaults.debit ? money(defaults.debit) : "";
   creditInput.value = defaults.credit ? money(defaults.credit) : "";
-  assistInput.value = defaults.assist || "";
+  fillAssistOptionsForRow(tr, {
+    assistType: defaults.assistType || "",
+    assistId: defaults.assistId || "",
+    assistName: defaults.assist || defaults.assistName || ""
+  });
 
   function fillName() {
     const s = getActiveBook().subjects.find((x) => x.code === codeInput.value.trim());
@@ -261,7 +348,7 @@ function addEntryRow(defaults = {}) {
     if (!el.entryTableBody.children.length) addEntryRow();
   });
 
-  [codeInput, debitInput, creditInput, assistInput].forEach((input) => {
+  [codeInput, debitInput, creditInput, assistTypeSelect, assistItemSelect, assistTextInput].forEach((input) => {
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -294,9 +381,12 @@ function entryRowsToData() {
       subjectName: s ? s.name : "",
       debit: parseAmount(tr.querySelector(".debit").value),
       credit: parseAmount(tr.querySelector(".credit").value),
-      assist: tr.querySelector(".assist").value.trim()
+      assistType: tr.querySelector(".assist-type").value || "",
+      assistId: tr.querySelector(".assist-item").value || "",
+      assistName: tr.querySelector(".assist-text").value.trim(),
+      assist: tr.querySelector(".assist-text").value.trim()
     };
-  }).filter((r) => r.subjectCode || r.debit || r.credit || r.assist);
+  }).filter((r) => r.subjectCode || r.debit || r.credit || r.assistName);
 }
 
 function autoBalanceForLastRow(currentRow) {
@@ -358,7 +448,7 @@ function renderLedger() {
   getPostedVouchers(book).forEach((v) => {
     v.entries.filter((e) => e.subjectCode === code).forEach((e) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${v.date}</td><td>${v.id}</td><td>${v.summary}</td><td>${money(e.debit)}</td><td>${money(e.credit)}</td><td>${e.assist || ""}</td>`;
+      tr.innerHTML = `<td>${v.date}</td><td>${v.id}</td><td>${v.summary}</td><td>${money(e.debit)}</td><td>${money(e.credit)}</td><td>${e.assistName || e.assist || ""}</td>`;
       el.ledgerTableBody.appendChild(tr);
     });
   });
@@ -479,8 +569,8 @@ function aiGenerateVoucherDraft(scenario) {
   document.querySelector("#voucherSummary").value = summary;
   resetEntryForm();
   el.entryTableBody.innerHTML = "";
-  addEntryRow({ subjectCode: debitCode, debit: amount, credit: 0, assist: "AI草稿" });
-  addEntryRow({ subjectCode: creditCode, debit: 0, credit: amount, assist: "AI草稿" });
+  addEntryRow({ subjectCode: debitCode, debit: amount, credit: 0, assistType: "PERSON", assistName: "AI草稿" });
+  addEntryRow({ subjectCode: creditCode, debit: 0, credit: amount, assistType: "PERSON", assistName: "AI草稿" });
 
   el.aiHint.textContent = `AI已生成草稿：${summary}，金额 ${money(amount)}`;
 }
@@ -531,6 +621,7 @@ function aiSmartCheck() {
 function rerenderAll() {
   renderBooks();
   renderSubjects();
+  renderAssistProjects();
   renderVouchers();
   renderBalanceTable();
   renderLedger();
@@ -571,6 +662,41 @@ function bindEvents() {
     state.activeBookId = btn.dataset.id;
     saveState();
     rerenderAll();
+  });
+
+
+  if (el.assistTypeSelect) {
+    el.assistTypeSelect.addEventListener("change", () => {
+      renderAssistProjects();
+      refreshAssistOptionsInEntryRows();
+    });
+  }
+
+  document.querySelector("#addAssistBtn")?.addEventListener("click", () => {
+    const book = getActiveBook();
+    const type = el.assistTypeSelect.value;
+    const code = (el.assistCodeInput.value || "").trim();
+    const name = (el.assistNameInput.value || "").trim();
+    if (!code || !name) return alert("辅助项编码和名称不能为空");
+    if (book.assistItems.some((x) => x.type === type && x.code === code)) return alert("同类别下编码已存在");
+    book.assistItems.push({ id: book.assistSeq++, type, code, name });
+    el.assistCodeInput.value = "";
+    el.assistNameInput.value = "";
+    saveState();
+    renderAssistProjects();
+    refreshAssistOptionsInEntryRows();
+  });
+
+  el.assistTableBody?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-assist-action]");
+    if (!btn) return;
+    const book = getActiveBook();
+    if (btn.dataset.assistAction === "delete") {
+      book.assistItems = book.assistItems.filter((x) => String(x.id) !== String(btn.dataset.id));
+      saveState();
+      renderAssistProjects();
+      refreshAssistOptionsInEntryRows();
+    }
   });
 
   document.querySelector("#initSubjectsBtn").addEventListener("click", () => {

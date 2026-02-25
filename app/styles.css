@@ -81,3 +81,13 @@ h3 { font-size: 14px; margin-bottom: 6px; }
 }
 .ok { color: #0f766e; font-weight: 700; }
 .warn { color: #dc2626; font-weight: 700; }
+
+.assist-cell {
+  display: grid;
+  grid-template-columns: 90px 180px 1fr;
+  gap: 6px;
+}
+.assist-cell select,
+.assist-cell input {
+  width: 100%;
+}

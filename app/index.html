@@ -50,6 +50,28 @@
         </table>
       </section>
 
+
+
+      <section class="card">
+        <h2>1.5 辅助项目管理（单位 / 个人 / 部门）</h2>
+        <div class="row">
+          <label>类别
+            <select id="assistManageType">
+              <option value="ORG">单位（客户/供应商）</option>
+              <option value="PERSON">个人（外部/员工）</option>
+              <option value="DEPT">部门</option>
+            </select>
+          </label>
+          <label>编码 <input id="assistCodeInput" placeholder="例如 CUST001 / EMP001 / D001" /></label>
+          <label>名称 <input id="assistNameInput" placeholder="例如 杭州A客户 / 张三 / 财务部" /></label>
+          <button id="addAssistBtn">新增辅助项目</button>
+        </div>
+        <table id="assistTable">
+          <thead><tr><th>ID</th><th>类别</th><th>编码</th><th>名称</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
       <section class="card">
         <h2>2. 凭证录入（Enter 新增行，最后一行金额输入 = 自动平衡）</h2>
         <div class="row">
@@ -178,7 +200,18 @@
         <td><input class="subject-name" placeholder="库存现金" readonly /></td>
         <td><input class="debit" placeholder="0.00" /></td>
         <td><input class="credit" placeholder="0.00" /></td>
-        <td><input class="assist" placeholder="客户A/部门" /></td>
+        <td>
+          <div class="assist-cell">
+            <select class="assist-type">
+              <option value="">无</option>
+              <option value="ORG">单位</option>
+              <option value="PERSON">个人</option>
+              <option value="DEPT">部门</option>
+            </select>
+            <select class="assist-item"><option value="">选择辅助项</option></select>
+            <input class="assist-text" placeholder="或手工录入" />
+          </div>
+        </td>
         <td><button class="delete-row">删除</button></td>
       </tr>
     </template>
