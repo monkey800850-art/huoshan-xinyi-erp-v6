@@ -42,3 +42,14 @@ python -m http.server 8000
 
 - 后端最小实现：`backend/m1/src/server.js`
 - 后端冒烟测试：`backend/m1/tests/smoke.mjs`
+
+
+## Win11 一键启动（PowerShell）
+```powershell
+./start-dev.ps1
+```
+
+可选端口：
+```powershell
+./start-dev.ps1 -FrontendPort 8001 -BackendPort 9091
+```
