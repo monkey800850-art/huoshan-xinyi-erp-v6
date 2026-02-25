@@ -53,3 +53,50 @@ python -m http.server 8000
 ```powershell
 ./start-dev.ps1 -FrontendPort 8001 -BackendPort 9091
 ```
+
+
+## Git 初始化与推送常见问题（Linux/WSL）
+
+如果你在 `git commit` 或 `git push` 时看到类似报错：
+- `Author identity unknown`
+- `fatal: empty ident name`
+- `error: remote origin already exists`
+- `error: src refspec work does not match any`
+
+可按下面步骤处理：
+
+```bash
+# 1) 配置提交身份（至少配置当前仓库一次）
+git config user.name "Your Name"
+git config user.email "you@example.com"
+
+# 如需全局生效（可选）
+# git config --global user.name "Your Name"
+# git config --global user.email "you@example.com"
+
+# 2) 确认仓库已有文件变更并完成首次提交
+git status
+git add .
+git commit -m "init phoenix local workspace"
+
+# 3) 处理 origin 已存在
+# 查看当前远程
+git remote -v
+# 如果 URL 不对，先删除再重加
+git remote remove origin
+git remote add origin https://github.com/monkey800850-art/huoshan-xinyi-erp-v6.git
+
+# 4) 创建并切换到工作分支
+# 若分支不存在：
+git checkout -b work
+# 若分支已存在：
+# git checkout work
+
+# 5) 推送（首次推送需要 -u 建立跟踪）
+git push -u origin work
+```
+
+### 错误含义速查
+- `Author identity unknown` / `empty ident name`：未配置 `user.name`/`user.email`。
+- `remote origin already exists`：远程别名 `origin` 已存在，不必重复添加；如 URL 错误请先 `git remote remove origin`。
+- `src refspec work does not match any`：通常是**分支还没有任何提交**，先成功 commit 再 push。
