@@ -43,6 +43,20 @@
             <option value="enterprise">企业会计准则</option>
           </select>
           <button id="initSubjectsBtn">初始化科目</button>
+          <button id="downloadSubjectTemplateBtn">下载导入模板CSV</button>
+          <input type="file" id="subjectImportFile" accept=".csv" />
+          <button id="importSubjectsBtn">导入科目</button>
+        </div>
+        <div class="row">
+          <label>新增科目编码 <input id="newSubjectCodeInput" placeholder="例如 6603" /></label>
+          <label>新增科目名称 <input id="newSubjectNameInput" placeholder="例如 财务费用" /></label>
+          <label>方向
+            <select id="newSubjectDirectionSelect">
+              <option value="借">借</option>
+              <option value="贷">贷</option>
+            </select>
+          </label>
+          <button id="addSubjectBtn">新增科目</button>
         </div>
         <table id="subjectsTable">
           <thead><tr><th>编码</th><th>名称</th><th>方向</th></tr></thead>
@@ -91,9 +105,14 @@
       </section>
 
       <section class="card">
-        <h2>3. 凭证管理（审核 / 记账）</h2>
+        <h2>3. 凭证管理（审核 / 记账 / 反审核 / 反记账）</h2>
         <table id="voucherTable">
           <thead><tr><th>编号</th><th>日期</th><th>摘要</th><th>借方合计</th><th>贷方合计</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="voucherDetailMeta" class="muted">点击凭证编号查看明细</div>
+        <table id="voucherDetailTable">
+          <thead><tr><th>科目编码</th><th>科目名称</th><th>借方</th><th>贷方</th><th>辅助项</th></tr></thead>
           <tbody></tbody>
         </table>
       </section>

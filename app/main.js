@@ -139,6 +139,7 @@ function loadState() {
 }
 
 let state = loadState();
+let selectedVoucherId = "";
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -165,7 +166,16 @@ const el = {
   assistTypeSelect: document.querySelector("#assistManageType"),
   assistCodeInput: document.querySelector("#assistCodeInput"),
   assistNameInput: document.querySelector("#assistNameInput"),
-  assistTableBody: document.querySelector("#assistTable tbody")
+  assistTableBody: document.querySelector("#assistTable tbody"),
+  downloadSubjectTemplateBtn: document.querySelector("#downloadSubjectTemplateBtn"),
+  subjectImportFile: document.querySelector("#subjectImportFile"),
+  importSubjectsBtn: document.querySelector("#importSubjectsBtn"),
+  newSubjectCodeInput: document.querySelector("#newSubjectCodeInput"),
+  newSubjectNameInput: document.querySelector("#newSubjectNameInput"),
+  newSubjectDirectionSelect: document.querySelector("#newSubjectDirectionSelect"),
+  addSubjectBtn: document.querySelector("#addSubjectBtn"),
+  voucherDetailMeta: document.querySelector("#voucherDetailMeta"),
+  voucherDetailTableBody: document.querySelector("#voucherDetailTable tbody")
 };
 
 function getActiveBook() {
@@ -333,6 +343,91 @@ function computeRowsFromMovements(reportType, posted, movements) {
   return [["经营现金流入", inflow], ["经营现金流出", outflow], ["现金净增加额", inflow - outflow]];
 }
 
+function parseCsvLine(line = "") {
+  const row = [];
+  let cur = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') {
+        cur += '"';
+        i += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (ch === "," && !quoted) {
+      row.push(cur.trim());
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  row.push(cur.trim());
+  return row;
+}
+
+function importSubjectsFromCsv(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const rows = lines.map(parseCsvLine);
+  const body = rows.filter((r, idx) => {
+    if (idx === 0) return !["编码", "code"].includes((r[0] || "").toLowerCase());
+    return true;
+  });
+
+  const subjects = body.map((r) => ({ code: (r[0] || "").trim(), name: (r[1] || "").trim(), direction: (r[2] || "借").trim() || "借" }))
+    .filter((x) => x.code && x.name)
+    .map((x) => ({ ...x, direction: x.direction === "贷" ? "贷" : "借" }));
+
+  const seen = new Set();
+  const dedup = [];
+  subjects.forEach((s) => {
+    if (!seen.has(s.code)) {
+      dedup.push(s);
+      seen.add(s.code);
+    }
+  });
+  return dedup;
+}
+
+function subjectTemplateCsv() {
+  return [
+    ["编码", "名称", "方向"],
+    ["1001", "库存现金", "借"],
+    ["1002", "银行存款", "借"],
+    ["2202", "应付账款", "贷"],
+    ["5602", "管理费用", "借"]
+  ].map((l) => l.join(",")).join("\n");
+}
+
+function upsertSubjects(book, imported) {
+  const map = new Map(book.subjects.map((s) => [s.code, { ...s }]));
+  imported.forEach((s) => map.set(s.code, { ...s }));
+  book.subjects = [...map.values()].sort((a, b) => a.code.localeCompare(b.code, "zh-Hans-CN"));
+}
+
+function renderVoucherDetail() {
+  const book = getActiveBook();
+  const body = el.voucherDetailTableBody;
+  if (!body || !el.voucherDetailMeta) return;
+  body.innerHTML = "";
+
+  const target = book.vouchers.find((v) => v.id === selectedVoucherId) || book.vouchers[book.vouchers.length - 1];
+  if (!target) {
+    el.voucherDetailMeta.textContent = "点击凭证编号查看明细";
+    return;
+  }
+
+  selectedVoucherId = target.id;
+  el.voucherDetailMeta.textContent = `当前凭证：${target.id} | 日期 ${target.date} | 摘要 ${target.summary} | 状态 ${target.status}`;
+  target.entries.forEach((e) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${e.subjectCode}</td><td>${e.subjectName || ""}</td><td>${money(e.debit)}</td><td>${money(e.credit)}</td><td>${e.assistName || e.assist || ""}</td>`;
+    body.appendChild(tr);
+  });
+}
+
 function renderBooks() {
   const active = getActiveBook();
   el.activeBookSelect.innerHTML = state.books.map((b) => `<option value="${b.id}" ${b.id === active.id ? "selected" : ""}>${b.id} ${b.name}</option>`).join("");
@@ -487,7 +582,7 @@ function renderVouchers() {
     if (v.status === "posted") actions.push(`<button data-action="unpost" data-id="${v.id}">反记账</button>`);
 
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${v.id}</td><td>${v.date}</td><td>${v.summary}</td><td>${money(v.totalDebit)}</td><td>${money(v.totalCredit)}</td><td class="${statusCls}">${v.status}</td><td>${actions.join("")}</td>`;
+    tr.innerHTML = `<td><button class="link-btn" data-action="view" data-id="${v.id}">${v.id}</button></td><td>${v.date}</td><td>${v.summary}</td><td>${money(v.totalDebit)}</td><td>${money(v.totalCredit)}</td><td class="${statusCls}">${v.status}</td><td>${actions.join("")}</td>`;
     el.voucherTableBody.appendChild(tr);
   });
 }
@@ -687,6 +782,7 @@ function rerenderAll() {
   renderSubjects();
   renderAssistProjects();
   renderVouchers();
+  renderVoucherDetail();
   renderBalanceTable();
   renderLedger();
   renderCurrentReport();
@@ -772,6 +868,39 @@ function bindEvents() {
     alert(`账套 ${book.name} 科目初始化完成`);
   });
 
+  el.downloadSubjectTemplateBtn?.addEventListener("click", () => {
+    downloadCsv("科目导入模板.csv", subjectTemplateCsv());
+  });
+
+  el.importSubjectsBtn?.addEventListener("click", async () => {
+    const file = el.subjectImportFile?.files?.[0];
+    if (!file) return alert("请先选择CSV文件");
+    const text = await file.text();
+    const imported = importSubjectsFromCsv(text);
+    if (!imported.length) return alert("未解析到有效科目，请检查模板格式");
+    const book = getActiveBook();
+    upsertSubjects(book, imported);
+    saveState();
+    rerenderAll();
+    alert(`导入成功，共 ${imported.length} 条科目`);
+  });
+
+  el.addSubjectBtn?.addEventListener("click", () => {
+    const book = getActiveBook();
+    if (!book.subjects.length) return alert("请先初始化或导入科目后再新增");
+    const code = (el.newSubjectCodeInput.value || "").trim();
+    const name = (el.newSubjectNameInput.value || "").trim();
+    const direction = el.newSubjectDirectionSelect.value || "借";
+    if (!code || !name) return alert("新增科目编码和名称不能为空");
+    if (book.subjects.some((s) => s.code === code)) return alert("科目编码已存在");
+    book.subjects.push({ code, name, direction: direction === "贷" ? "贷" : "借" });
+    book.subjects.sort((a, b) => a.code.localeCompare(b.code, "zh-Hans-CN"));
+    el.newSubjectCodeInput.value = "";
+    el.newSubjectNameInput.value = "";
+    saveState();
+    rerenderAll();
+  });
+
   document.querySelector("#addRowBtn").addEventListener("click", () => addEntryRow());
 
   document.querySelector("#saveVoucherBtn").addEventListener("click", () => {
@@ -802,6 +931,11 @@ function bindEvents() {
     const book = getActiveBook();
     const v = book.vouchers.find((x) => x.id === btn.dataset.id);
     if (!v) return;
+    if (btn.dataset.action === "view") {
+      selectedVoucherId = btn.dataset.id;
+      renderVoucherDetail();
+      return;
+    }
     if (btn.dataset.action === "audit") {
       if (v.status !== "draft") return alert("仅草稿状态可审核");
       v.status = "audited";
