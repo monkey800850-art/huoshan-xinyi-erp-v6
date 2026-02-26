@@ -21,6 +21,11 @@ const SUBJECT_TEMPLATES = {
   ]
 };
 
+const PERMISSION_ITEMS = [
+  "voucher_create", "voucher_audit", "voucher_unaudit", "voucher_post", "voucher_unpost", "voucher_delete",
+  "period_close", "report_generate", "report_delete", "report_audit", "report_query"
+];
+
 const SUMMARY_LIBRARY = [
   "支付办公费",
   "支付房租",
@@ -34,6 +39,17 @@ const SUMMARY_LIBRARY = [
 
 function toDateValue(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatDateDisplay(v) {
+  if (!v) return "";
+  const m = String(v).match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}.${m[2]}.${m[3]}`;
+  return String(v).replace(/-/g, ".");
+}
+
+function todayDisplay() {
+  return formatDateDisplay(toDateValue(new Date()));
 }
 
 function money(v) {
@@ -74,6 +90,7 @@ function emptyBook(id = "B0001", name = "默认账套") {
     name,
     legalEntity: "默认法人",
     isLegalEntity: true,
+    parentLegalBookId: "",
     subjects: [],
     vouchers: [],
     assistItems: [],
@@ -102,20 +119,24 @@ function loadState() {
       activeBookId: book.id,
       mergeSeq: 1,
       mergeVersions: [],
-      currentMergeId: ""
+      currentMergeId: "",
+      users: [],
+      activeUserId: ""
     };
   }
 
   const s = JSON.parse(raw);
   if (s.books && Array.isArray(s.books)) {
-    const books = s.books.map((b) => ({ ...b, assistItems: b.assistItems || [], assistSeq: b.assistSeq || 1 }));
+    const books = s.books.map((b) => ({ ...b, assistItems: b.assistItems || [], assistSeq: b.assistSeq || 1, parentLegalBookId: b.parentLegalBookId || "" }));
     return {
       books,
       bookSeq: s.bookSeq || 1,
       activeBookId: s.activeBookId || (books[0] && books[0].id) || "",
       mergeSeq: s.mergeSeq || 1,
       mergeVersions: s.mergeVersions || [],
-      currentMergeId: s.currentMergeId || ""
+      currentMergeId: s.currentMergeId || "",
+      users: s.users || [],
+      activeUserId: s.activeUserId || ""
     };
   }
 
@@ -134,12 +155,15 @@ function loadState() {
     activeBookId: migrated.id,
     mergeSeq: 1,
     mergeVersions: [],
-    currentMergeId: ""
+    currentMergeId: "",
+    users: [],
+    activeUserId: ""
   };
 }
 
 let state = loadState();
 let selectedVoucherId = "";
+let loginSmsCode = "123456";
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -147,7 +171,23 @@ function saveState() {
 
 const el = {
   activeBookSelect: document.querySelector("#activeBookSelect"),
+  parentLegalBookSelect: document.querySelector("#parentLegalBookSelect"),
   bookTableBody: document.querySelector("#bookTable tbody"),
+  regUsernameInput: document.querySelector("#regUsernameInput"),
+  regPasswordInput: document.querySelector("#regPasswordInput"),
+  registerBtn: document.querySelector("#registerBtn"),
+  loginUsernameInput: document.querySelector("#loginUsernameInput"),
+  loginPasswordInput: document.querySelector("#loginPasswordInput"),
+  loginPwdBtn: document.querySelector("#loginPwdBtn"),
+  loginPhoneInput: document.querySelector("#loginPhoneInput"),
+  loginSmsCodeInput: document.querySelector("#loginSmsCodeInput"),
+  loginSmsBtn: document.querySelector("#loginSmsBtn"),
+  loginWxBtn: document.querySelector("#loginWxBtn"),
+  authMeta: document.querySelector("#authMeta"),
+  permUserSelect: document.querySelector("#permUserSelect"),
+  permCheckGrid: document.querySelector("#permCheckGrid"),
+  savePermBtn: document.querySelector("#savePermBtn"),
+  bossDashboard: document.querySelector("#bossDashboard"),
   subjectsTableBody: document.querySelector("#subjectsTable tbody"),
   voucherTableBody: document.querySelector("#voucherTable tbody"),
   balanceTableBody: document.querySelector("#balanceTable tbody"),
@@ -191,6 +231,19 @@ const el = {
   transferDateInput: document.querySelector("#transferDateInput"),
   transferDeptBtn: document.querySelector("#transferDeptBtn"),
   deptManagerInput: document.querySelector("#deptManagerInput"),
+  addProjectBtn: document.querySelector("#addProjectBtn"),
+  projectNameInput: document.querySelector("#projectNameInput"),
+  projectAddressInput: document.querySelector("#projectAddressInput"),
+  projectOwnerInput: document.querySelector("#projectOwnerInput"),
+  projectStartInput: document.querySelector("#projectStartInput"),
+  projectPlanFinishInput: document.querySelector("#projectPlanFinishInput"),
+  projectFinishInput: document.querySelector("#projectFinishInput"),
+  projectSettleInput: document.querySelector("#projectSettleInput"),
+  projectTableBody: document.querySelector("#projectTable tbody"),
+  refreshAgingBtn: document.querySelector("#refreshAgingBtn"),
+  agingTableBody: document.querySelector("#agingTable tbody"),
+  refreshSalesStatsBtn: document.querySelector("#refreshSalesStatsBtn"),
+  salesStatsTableBody: document.querySelector("#salesStatsTable tbody"),
   reportImportFile: document.querySelector("#reportImportFile"),
   importReportBtn: document.querySelector("#importReportBtn"),
   saveReportEditBtn: document.querySelector("#saveReportEditBtn"),
@@ -209,6 +262,36 @@ function getActiveBook() {
   return state.books.find((b) => b.id === state.activeBookId) || state.books[0];
 }
 
+function getActiveUser() {
+  return state.users.find((u) => u.id === state.activeUserId) || null;
+}
+
+function hasPerm(perm) {
+  const u = getActiveUser();
+  if (!u) return false;
+  return (u.permissions || []).includes(perm);
+}
+
+function ensurePerm(perm, hint = "无权限") {
+  if (!hasPerm(perm)) {
+    alert(`权限不足：${hint}`);
+    return false;
+  }
+  return true;
+}
+
+function validateAddressRule(text) {
+  if (!text) return false;
+  if (text.startsWith("中国+")) return /^中国\+[^+]+省\+.+/.test(text);
+  return /^(亚洲|欧洲|非洲|北美洲|南美洲|大洋洲|南极洲)\+[^+]+\+.+/.test(text);
+}
+
+function normalizeBookVoucherSeq(book) {
+  book.vouchers.sort((a,b)=>String(a.id).localeCompare(String(b.id),"zh-Hans-CN"));
+  book.vouchers.forEach((v,idx)=>{ v.id = `记${String(idx+1).padStart(5,"0")}`; });
+  book.seq = book.vouchers.length + 1;
+}
+
 function reportTypeName(type) {
   return type === "bs" ? "资产负债表" : type === "pl" ? "利润表" : type === "cf" ? "现金流量表" : "所有者权益变动表";
 }
@@ -219,6 +302,7 @@ function assistTypeName(type) {
   if (type === "ORG") return "单位";
   if (type === "PERSON") return "个人";
   if (type === "DEPT") return "部门";
+  if (type === "PROJ") return "项目";
   return "未分类";
 }
 
@@ -444,6 +528,10 @@ function computeRowsFromMovements(reportType, posted, movements) {
   return [["经营现金流入", inflow], ["经营现金流出", outflow], ["现金净增加额", inflow - outflow]];
 }
 
+function isValidSubjectCode(code) {
+  return /^\d{4}(?:\.\d{2}){0,5}$/.test(code);
+}
+
 function parseCsvLine(line = "") {
   const row = [];
   let cur = "";
@@ -529,16 +617,143 @@ function renderVoucherDetail() {
   });
 }
 
+function getBookScope(book) {
+  if (!book) return [];
+  if (book.virtualMerge) {
+    return [book, ...state.books.filter((x) => (book.connectedLegalBookIds || []).includes(x.id) || (book.connectedLegalBookIds || []).includes(x.parentLegalBookId))];
+  }
+  if (book.isLegalEntity) {
+    return [book, ...state.books.filter((x) => !x.isLegalEntity && x.parentLegalBookId === book.id)];
+  }
+  return [book];
+}
+
+function renderAuthPanel() {
+  if (!el.authMeta) return;
+  const u = getActiveUser();
+  el.authMeta.textContent = u ? `当前用户：${u.username}（${u.loginType || "password"}） | 今天：${todayDisplay()}` : `未登录 | 今天：${todayDisplay()}`;
+  if (el.permUserSelect) {
+    el.permUserSelect.innerHTML = state.users.map((u2) => `<option value="${u2.id}" ${u2.id===state.activeUserId?"selected":""}>${u2.username}</option>`).join("");
+  }
+  if (el.permCheckGrid) {
+    const perms = (u?.permissions || []);
+    el.permCheckGrid.innerHTML = PERMISSION_ITEMS.map((p) => `<label><input type="checkbox" data-perm="${p}" ${perms.includes(p)?"checked":""}/> ${p}</label>`).join(" ");
+  }
+}
+
 function renderBooks() {
   const active = getActiveBook();
+  const legalBooks = state.books.filter((b) => b.isLegalEntity && !b.virtualMerge);
+  if (el.parentLegalBookSelect) {
+    el.parentLegalBookSelect.innerHTML = `<option value="">请选择法人账套</option>` + legalBooks.map((b) => `<option value="${b.id}">${b.name}</option>`).join("");
+  }
   el.activeBookSelect.innerHTML = state.books.map((b) => `<option value="${b.id}" ${b.id === active.id ? "selected" : ""}>${b.id} ${b.name}</option>`).join("");
   el.bookTableBody.innerHTML = "";
   state.books.forEach((b) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${b.id}</td><td>${b.name}</td><td>${b.legalEntity || ""}</td><td>${b.isLegalEntity ? "法人账套" : "非法人账套"}</td><td>${b.id === active.id ? "当前" : ""}</td><td><button data-book-action="use" data-id="${b.id}">使用</button></td>`;
+    const relation = b.virtualMerge ? `合并主体(${(b.connectedLegalBookIds||[]).length}法人)` : (b.isLegalEntity ? "法人账套" : `非法人->${state.books.find((x)=>x.id===b.parentLegalBookId)?.name || "未关联"}`);
+    tr.innerHTML = `<td>${b.id}</td><td>${b.name}</td><td>${b.legalEntity || ""}</td><td>${relation}</td><td>${b.id === active.id ? "当前" : ""}</td><td><button data-book-action="use" data-id="${b.id}">使用</button></td>`;
     el.bookTableBody.appendChild(tr);
   });
-  el.mergeChecks.innerHTML = state.books.map((b) => `<label><input type="checkbox" data-merge-book="${b.id}" /> ${b.name}</label>`).join(" ");
+  el.mergeChecks.innerHTML = state.books.filter((b) => b.isLegalEntity && !b.virtualMerge).map((b) => `<label><input type="checkbox" data-merge-book="${b.id}" /> ${b.name}</label>`).join(" ");
+  renderAuthPanel();
+}
+
+function renderProjectTable() {
+  const book = getActiveBook();
+  if (!el.projectTableBody) return;
+  el.projectTableBody.innerHTML = "";
+  book.assistItems.filter((x) => x.type === "PROJ").forEach((p) => {
+    const m = p.meta || {};
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>${m.address || ""}</td><td>${m.owner || ""}</td><td>${formatDateDisplay(m.startDate || "")}</td><td>${formatDateDisplay(m.planFinishDate || "")}</td><td>${formatDateDisplay(m.finishDate || "")}</td><td>${formatDateDisplay(m.settleDate || "")}</td>`;
+    el.projectTableBody.appendChild(tr);
+  });
+}
+
+function getAgingRows(book = getActiveBook()) {
+  const today = toDateValue(new Date());
+  const rows = [];
+  getBookScope(book).forEach((scopeBook) => {
+    scopeBook.vouchers.filter((v) => v.status === "posted").forEach((v) => {
+      v.entries.forEach((e) => {
+        if (!["1122", "2202"].includes((e.subjectCode || "").split(".")[0])) return;
+        if (!e.dueDate) return;
+        const amount = e.debit > 0 ? e.debit : e.credit;
+        const agingDays = Math.floor((new Date(today) - new Date(v.date)) / 86400000);
+        const overdueDays = Math.floor((new Date(today) - new Date(e.dueDate)) / 86400000);
+        const status = overdueDays > 0 ? "逾期" : (overdueDays >= -10 ? "即将到期" : "正常");
+        rows.push({
+          type: e.subjectCode.startsWith("1122") ? "应收" : "应付",
+          orgName: e.assistName || "-",
+          voucherId: v.id,
+          date: v.date,
+          dueDate: e.dueDate,
+          amount,
+          agingDays,
+          overdueDays: Math.max(overdueDays, 0),
+          status
+        });
+      });
+    });
+  });
+  return rows;
+}
+
+function renderAgingReport() {
+  if (!el.agingTableBody) return;
+  const rows = getAgingRows();
+  el.agingTableBody.innerHTML = "";
+  rows.forEach((r) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${r.type}</td><td>${r.orgName}</td><td>${r.voucherId}</td><td>${formatDateDisplay(r.date)}</td><td>${formatDateDisplay(r.dueDate)}</td><td>${money(r.amount)}</td><td>${r.agingDays}</td><td>${r.overdueDays}</td><td class="${r.status === "逾期" ? "warn" : r.status === "即将到期" ? "status-audited" : "ok"}">${r.status}</td>`;
+    el.agingTableBody.appendChild(tr);
+  });
+}
+
+function getRegionFromAddress(addr = "") {
+  if (addr.startsWith("中国+")) {
+    const m = addr.split("+");
+    return m[1] || "中国";
+  }
+  const m = addr.split("+");
+  return m.length >= 2 ? `${m[0]}-${m[1]}` : "未知地区";
+}
+
+function renderSalesStats() {
+  if (!el.salesStatsTableBody) return;
+  const book = getActiveBook();
+  const statMap = new Map();
+  getBookScope(book).forEach((scopeBook) => {
+    scopeBook.vouchers.filter((v) => v.status === "posted").forEach((v) => {
+      v.entries.filter((e) => (e.subjectCode || "").startsWith("5") || (e.subjectName || "").includes("收入")).forEach((e) => {
+        const org = scopeBook.assistItems.find((x) => String(x.id) === String(e.assistId) && x.type === "ORG");
+        const person = org?.meta?.salespersonId ? scopeBook.assistItems.find((x) => String(x.id)===String(org.meta.salespersonId) && x.type === "PERSON") : null;
+        const region = getRegionFromAddress(org?.meta?.address || "");
+        const key = `${org?.name || "未关联单位"}|${person?.name || "未关联业务员"}|${region}`;
+        statMap.set(key, (statMap.get(key) || 0) + Math.max(e.credit - e.debit, 0));
+      });
+    });
+  });
+  el.salesStatsTableBody.innerHTML = "";
+  [...statMap.entries()].forEach(([k,v])=>{
+    const [org,sales,region]=k.split("|");
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${org}</td><td>${sales}</td><td>${region}</td><td>${money(v)}</td>`;
+    el.salesStatsTableBody.appendChild(tr);
+  });
+}
+
+function renderBossDashboard() {
+  if (!el.bossDashboard) return;
+  const book = getActiveBook();
+  const movements = getSubjectMovement(book, getPostedVouchers(book));
+  const cash = movements.filter((m)=>(m.code||"").startsWith("100")).reduce((sum,m)=>sum+(m.debit-m.credit),0);
+  const liabilities = movements.filter((m)=>(m.code||"").startsWith("2")).reduce((sum,m)=>sum+(m.credit-m.debit),0);
+  const profitRow = computeRowsFromMovements("pl", getPostedVouchers(book), movements).find((r)=>r[0]==="利润总额");
+  const alerts = getAgingRows(book).filter((r)=>r.status!=="正常");
+  const alertHtml = alerts.slice(0,5).map((a)=>`<span class="${a.status==="逾期"?"warn":"status-audited"}">${a.type}${a.orgName} ${a.status}</span>`).join(" ");
+  el.bossDashboard.innerHTML = `<span>资金状况: ${money(cash)}</span><span>负债: ${money(liabilities)}</span><span>利润: ${money(profitRow?profitRow[1]:0)}</span><span>应收应付预警: ${alertHtml || "无"}</span>`;
 }
 
 function renderSubjects() {
@@ -562,6 +777,7 @@ function addEntryRow(defaults = {}) {
   const assistTypeSelect = tr.querySelector(".assist-type");
   const assistItemSelect = tr.querySelector(".assist-item");
   const assistTextInput = tr.querySelector(".assist-text");
+  const dueDateInput = tr.querySelector(".due-date");
 
   codeInput.value = defaults.subjectCode || "";
   debitInput.value = defaults.debit ? money(defaults.debit) : "";
@@ -571,6 +787,7 @@ function addEntryRow(defaults = {}) {
     assistId: defaults.assistId || "",
     assistName: defaults.assist || defaults.assistName || ""
   });
+  if (dueDateInput) dueDateInput.value = defaults.dueDate || "";
 
   function fillName() {
     const s = getActiveBook().subjects.find((x) => x.code === codeInput.value.trim());
@@ -585,7 +802,7 @@ function addEntryRow(defaults = {}) {
     if (!el.entryTableBody.children.length) addEntryRow();
   });
 
-  [codeInput, debitInput, creditInput, assistTypeSelect, assistItemSelect, assistTextInput].forEach((input) => {
+  [codeInput, debitInput, creditInput, dueDateInput, assistTypeSelect, assistItemSelect, assistTextInput].forEach((input) => {
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -638,7 +855,8 @@ function entryRowsToData() {
       assistType: tr.querySelector(".assist-type").value || "",
       assistId: tr.querySelector(".assist-item").value || "",
       assistName: tr.querySelector(".assist-text").value.trim(),
-      assist: tr.querySelector(".assist-text").value.trim()
+      assist: tr.querySelector(".assist-text").value.trim(),
+      dueDate: tr.querySelector(".due-date")?.value || ""
     };
   }).filter((r) => r.subjectCode || r.debit || r.credit || r.assistName);
 }
@@ -665,8 +883,10 @@ function assertVoucherValid(voucher, book) {
   if (!voucher.entries.length) return "请至少录入一条分录";
   for (const e of voucher.entries) {
     if (!e.subjectCode) return "分录科目编码不能为空";
+    if (!isValidSubjectCode(e.subjectCode)) return `科目编码格式错误：${e.subjectCode}`;
     if (!book.subjects.some((s) => s.code === e.subjectCode)) return `科目不存在：${e.subjectCode}`;
     if ((e.debit > 0 && e.credit > 0) || (e.debit === 0 && e.credit === 0)) return "每行分录需且仅需填写借或贷金额";
+    if (["1122", "2202"].includes((e.subjectCode || "").split(".")[0]) && !e.dueDate) return "应收/应付科目分录必须填写到期日";
   }
   if (Math.abs(voucher.totalDebit - voucher.totalCredit) > 0.0001) return "借贷不平衡，无法保存";
   return "";
@@ -690,7 +910,8 @@ function renderVouchers() {
 
 function renderBalanceTable() {
   const book = getActiveBook();
-  const movements = getSubjectMovement(book, getPostedVouchers(book));
+  const posted = getBookScope(book).flatMap((b) => getPostedVouchers(b));
+  const movements = getSubjectMovement(book, posted);
   el.balanceTableBody.innerHTML = "";
   movements.forEach((m) => {
     const bal = m.direction === "借" ? m.debit - m.credit : m.credit - m.debit;
@@ -704,17 +925,17 @@ function renderLedger() {
   const book = getActiveBook();
   const code = el.ledgerSubjectSelect.value;
   el.ledgerTableBody.innerHTML = "";
-  getPostedVouchers(book).forEach((v) => {
+  getBookScope(book).flatMap((b) => getPostedVouchers(b)).forEach((v) => {
     v.entries.filter((e) => e.subjectCode === code).forEach((e) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${v.date}</td><td>${v.id}</td><td>${v.summary}</td><td>${money(e.debit)}</td><td>${money(e.credit)}</td><td>${e.assistName || e.assist || ""}</td>`;
+      tr.innerHTML = `<td>${formatDateDisplay(v.date)}</td><td>${v.id}</td><td>${v.summary}</td><td>${money(e.debit)}</td><td>${money(e.credit)}</td><td>${e.assistName || e.assist || ""}</td>`;
       el.ledgerTableBody.appendChild(tr);
     });
   });
 }
 
 function buildReportRows(book, reportType, startDate, endDate) {
-  const posted = getPostedVouchers(book, startDate, endDate);
+  const posted = getBookScope(book).flatMap((b) => getPostedVouchers(b, startDate, endDate));
   const movements = getSubjectMovement(book, posted);
   return computeRowsFromMovements(reportType, posted, movements);
 }
@@ -727,7 +948,7 @@ function renderCurrentReport() {
     el.reportMeta.textContent = "未生成报表";
     return;
   }
-  el.reportMeta.textContent = `当前报表：${cur.id} | ${reportTypeName(cur.type)} | ${cur.startDate} ~ ${cur.endDate} | ${cur.generatedAt}`;
+  el.reportMeta.textContent = `当前报表：${cur.id} | ${reportTypeName(cur.type)} | ${formatDateDisplay(cur.startDate)} ~ ${formatDateDisplay(cur.endDate)} | ${cur.generatedAt}`;
   cur.rows.forEach(([n, v], idx) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><input data-report-edit="name" data-idx="${idx}" value="${n}" /></td><td><input data-report-edit="value" data-idx="${idx}" value="${money(v)}" /></td>`;
@@ -740,7 +961,7 @@ function renderReportVersions() {
   el.reportVersionBody.innerHTML = "";
   [...book.reportVersions].reverse().forEach((r) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${r.id}</td><td>${reportTypeName(r.type)}</td><td>${r.startDate} ~ ${r.endDate}</td><td>${r.generatedAt}</td><td><button data-report-action="view" data-id="${r.id}">查看</button><button data-report-action="export" data-id="${r.id}">导出CSV</button></td>`;
+    tr.innerHTML = `<td>${r.id}</td><td>${reportTypeName(r.type)}</td><td>${formatDateDisplay(r.startDate)} ~ ${formatDateDisplay(r.endDate)}</td><td>${r.generatedAt}</td><td><button data-report-action="view" data-id="${r.id}">查看</button><button data-report-action="export" data-id="${r.id}">导出CSV</button><button data-report-action="delete" data-id="${r.id}">删除</button></td>`;
     el.reportVersionBody.appendChild(tr);
   });
 }
@@ -752,7 +973,7 @@ function renderCurrentMerge() {
     el.mergeMeta.textContent = "未生成合并报表";
     return;
   }
-  el.mergeMeta.textContent = `当前合并：${cur.id} | ${reportTypeName(cur.type)} | 账套 ${cur.bookNames.join("、")} | ${cur.startDate} ~ ${cur.endDate}`;
+  el.mergeMeta.textContent = `当前合并：${cur.id} | ${reportTypeName(cur.type)} | 账套 ${cur.bookNames.join("、")} | ${formatDateDisplay(cur.startDate)} ~ ${formatDateDisplay(cur.endDate)}`;
   cur.rows.forEach(([n, v]) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${n}</td><td>${money(v)}</td>`;
@@ -764,7 +985,7 @@ function renderMergeVersions() {
   el.mergeVersionBody.innerHTML = "";
   [...state.mergeVersions].reverse().forEach((r) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${r.id}</td><td>${reportTypeName(r.type)}</td><td>${r.bookNames.join("、")}</td><td>${r.startDate} ~ ${r.endDate}</td><td>${r.generatedAt}</td><td><button data-merge-action="view" data-id="${r.id}">查看</button><button data-merge-action="export" data-id="${r.id}">导出CSV</button></td>`;
+    tr.innerHTML = `<td>${r.id}</td><td>${reportTypeName(r.type)}</td><td>${r.bookNames.join("、")}</td><td>${formatDateDisplay(r.startDate)} ~ ${formatDateDisplay(r.endDate)}</td><td>${r.generatedAt}</td><td><button data-merge-action="view" data-id="${r.id}">查看</button><button data-merge-action="export" data-id="${r.id}">导出CSV</button></td>`;
     el.mergeVersionBody.appendChild(tr);
   });
 }
@@ -773,7 +994,7 @@ function resequenceVouchers(book) {
   book.vouchers
     .sort((a, b) => String(a.id).localeCompare(String(b.id), "zh-Hans-CN"))
     .forEach((v, idx) => {
-      v.id = `V${String(idx + 1).padStart(4, "0")}`;
+      v.id = `记${String(idx + 1).padStart(5, "0")}`;
     });
 }
 
@@ -904,10 +1125,14 @@ function rerenderAll() {
   renderBooks();
   renderSubjects();
   renderAssistProjects();
+  renderProjectTable();
   renderVouchers();
   renderVoucherDetail();
   renderBalanceTable();
   renderLedger();
+  renderAgingReport();
+  renderSalesStats();
+  renderBossDashboard();
   renderCurrentReport();
   renderReportVersions();
   renderCurrentMerge();
@@ -926,6 +1151,11 @@ function bindEvents() {
     const b = emptyBook(id, name);
     b.legalEntity = legalEntity;
     b.isLegalEntity = isLegalEntity;
+    if (!isLegalEntity) {
+      const parent = el.parentLegalBookSelect?.value || "";
+      if (!parent) return alert("非法人账套必须选择所属法人账套");
+      b.parentLegalBookId = parent;
+    }
     state.books.push(b);
     state.bookSeq += 1;
     state.activeBookId = id;
@@ -948,23 +1178,95 @@ function bindEvents() {
   });
 
 
-  if (el.assistTypeSelect) {
-    el.assistTypeSelect.addEventListener("change", () => {
+
+  el.registerBtn?.addEventListener("click", () => {
+    const username = (el.regUsernameInput.value || "").trim();
+    const password = (el.regPasswordInput.value || "").trim();
+    if (!username || password.length < 6) return alert("注册名不能为空且密码至少6位");
+    if (state.users.some((u) => u.username === username)) return alert("注册名已存在");
+    const id = `U${String(state.users.length + 1).padStart(3, "0")}`;
+    state.users.push({ id, username, password, phone: "", permissions: [...PERMISSION_ITEMS], loginType: "password" });
+    state.activeUserId = id;
+    saveState();
+    rerenderAll();
+  });
+
+  el.loginPwdBtn?.addEventListener("click", () => {
+    const username = (el.loginUsernameInput.value || "").trim();
+    const pwd = (el.loginPasswordInput.value || "").trim();
+    const u = state.users.find((x) => x.username === username && x.password === pwd);
+    if (!u) return alert("账号或密码错误");
+    u.loginType = "password";
+    state.activeUserId = u.id;
+    saveState();
+    rerenderAll();
+  });
+
+  el.loginSmsBtn?.addEventListener("click", () => {
+    const phone = (el.loginPhoneInput.value || "").trim();
+    const code = (el.loginSmsCodeInput.value || "").trim();
+    if (!phone) return alert("请输入手机号");
+    if (code !== loginSmsCode) return alert("验证码错误，演示码 123456");
+    let u = state.users.find((x) => x.phone === phone);
+    if (!u) {
+      const id = `U${String(state.users.length + 1).padStart(3, "0")}`;
+      u = { id, username: `phone_${phone.slice(-4)}`, password: "", phone, permissions: ["report_query"], loginType: "sms" };
+      state.users.push(u);
+    }
+    u.loginType = "sms";
+    state.activeUserId = u.id;
+    saveState();
+    rerenderAll();
+  });
+
+  el.loginWxBtn?.addEventListener("click", () => {
+    let u = state.users.find((x) => x.username === "wx_demo");
+    if (!u) {
+      const id = `U${String(state.users.length + 1).padStart(3, "0")}`;
+      u = { id, username: "wx_demo", password: "", phone: "", permissions: ["report_query"], loginType: "wechat" };
+      state.users.push(u);
+    }
+    u.loginType = "wechat";
+    state.activeUserId = u.id;
+    saveState();
+    rerenderAll();
+  });
+
+  el.permUserSelect?.addEventListener("change", () => {
+    state.activeUserId = el.permUserSelect.value;
+    saveState();
+    rerenderAll();
+  });
+
+  el.savePermBtn?.addEventListener("click", () => {
+    const u = getActiveUser();
+    if (!u) return alert("请先选择用户");
+    u.permissions = [...document.querySelectorAll("#permCheckGrid input[data-perm]:checked")].map((x) => x.dataset.perm);
+    saveState();
+    rerenderAll();
+  });
+
+  if (el.assistTypeSelect) {    el.assistTypeSelect.addEventListener("change", () => {
       renderAssistProjects();
       refreshAssistOptionsInEntryRows();
     });
   }
 
   el.addOrgBtn?.addEventListener("click", () => {
+    const address = (el.orgAddressInput.value || "").trim();
+    if (address && !validateAddressRule(address)) return alert("单位地址不符合规则：国内 中国+省份+详细地址；国外 大洲+国家+详细地址");
+    const salesperson = getActiveBook().assistItems.find((x) => x.type === "PERSON" && x.meta?.isSalesperson);
     const err = addArchiveItem(
       "ORG",
       (el.orgCodeInput.value || "").trim(),
       (el.orgNameInput.value || "").trim(),
       {
         creditCode: (el.orgCreditCodeInput.value || "").trim(),
-        address: (el.orgAddressInput.value || "").trim(),
+        address,
         contact: (el.orgContactInput.value || "").trim(),
-        phone: (el.orgPhoneInput.value || "").trim()
+        phone: (el.orgPhoneInput.value || "").trim(),
+        salespersonId: salesperson?.id || "",
+        salespersonName: salesperson?.name || ""
       }
     );
     if (err) return alert(err);
@@ -974,6 +1276,8 @@ function bindEvents() {
   el.addPersonBtn?.addEventListener("click", () => {
     const kind = el.personKindSelect?.value || "EXTERNAL";
     const deptId = el.personDeptSelect?.value || "";
+    const address = (el.personAddressInput.value || "").trim();
+    if (address && !validateAddressRule(address)) return alert("个人地址不符合规则");
     const book = getActiveBook();
     const dept = book.assistItems.find((x) => String(x.id) === String(deptId) && x.type === "DEPT");
     if (kind === "EMPLOYEE" && !dept) return alert("员工档案必须选择所属部门");
@@ -989,8 +1293,9 @@ function bindEvents() {
       {
         kind,
         idNo: (el.personIdNoInput.value || "").trim(),
-        address: (el.personAddressInput.value || "").trim(),
+        address,
         phone: (el.personPhoneInput.value || "").trim(),
+        isSalesperson: (el.personKindSelect?.value || "") === "EMPLOYEE",
         deptHistory
       }
     );
@@ -1007,6 +1312,23 @@ function bindEvents() {
     );
     if (err) return alert(err);
     [el.deptCodeInput, el.deptNameInput, el.deptManagerInput].forEach((x) => { if (x) x.value = ""; });
+  });
+
+  el.addProjectBtn?.addEventListener("click", () => {
+    const name = (el.projectNameInput.value || "").trim();
+    const address = (el.projectAddressInput.value || "").trim();
+    if (!name) return alert("项目名称不能为空");
+    if (address && !validateAddressRule(address)) return alert("项目地址不符合规则");
+    const err = addArchiveItem("PROJ", `PROJ${Date.now().toString().slice(-6)}`, name, {
+      address,
+      owner: (el.projectOwnerInput.value || "").trim(),
+      startDate: el.projectStartInput.value,
+      planFinishDate: el.projectPlanFinishInput.value,
+      finishDate: el.projectFinishInput.value,
+      settleDate: el.projectSettleInput.value
+    });
+    if (err) return alert(err);
+    [el.projectNameInput, el.projectAddressInput, el.projectOwnerInput, el.projectStartInput, el.projectPlanFinishInput, el.projectFinishInput, el.projectSettleInput].forEach((x) => { if (x) x.value = ""; });
   });
 
   el.transferDeptBtn?.addEventListener("click", () => {
@@ -1075,6 +1397,7 @@ function bindEvents() {
     const name = (el.newSubjectNameInput.value || "").trim();
     const direction = el.newSubjectDirectionSelect.value || "借";
     if (!code || !name) return alert("新增科目编码和名称不能为空");
+    if (!isValidSubjectCode(code)) return alert("科目编码需满足 xxxx.xx.xx.xx.xx.xx 规则");
     if (book.subjects.some((s) => s.code === code)) return alert("科目编码已存在");
     book.subjects.push({ code, name, direction: direction === "贷" ? "贷" : "借" });
     book.subjects.sort((a, b) => a.code.localeCompare(b.code, "zh-Hans-CN"));
@@ -1087,11 +1410,12 @@ function bindEvents() {
   document.querySelector("#addRowBtn").addEventListener("click", () => addEntryRow());
 
   document.querySelector("#saveVoucherBtn").addEventListener("click", () => {
+    if (!ensurePerm("voucher_create", "凭证编制")) return;
     const book = getActiveBook();
     pruneEmptyEntryRows();
     const entries = entryRowsToData();
     const voucher = {
-      id: `V${String(book.seq).padStart(4, "0")}`,
+      id: `记${String(book.seq).padStart(5, "0")}`,
       date: document.querySelector("#voucherDate").value,
       summary: document.querySelector("#voucherSummary").value.trim(),
       entries,
@@ -1120,6 +1444,7 @@ function bindEvents() {
       return;
     }
     if (btn.dataset.action === "delete") {
+      if (!ensurePerm("voucher_delete", "凭证删除")) return;
       if (v.status !== "draft") return alert("仅未审核未记账凭证可删除");
       book.vouchers = book.vouchers.filter((x) => x.id !== v.id);
       resequenceVouchers(book);
@@ -1129,18 +1454,22 @@ function bindEvents() {
       return;
     }
     if (btn.dataset.action === "audit") {
+      if (!ensurePerm("voucher_audit", "凭证审核")) return;
       if (v.status !== "draft") return alert("仅草稿状态可审核");
       v.status = "audited";
     }
     if (btn.dataset.action === "post") {
+      if (!ensurePerm("voucher_post", "凭证记账")) return;
       if (v.status !== "audited") return alert("仅已审核状态可记账");
       v.status = "posted";
     }
     if (btn.dataset.action === "unpost") {
+      if (!ensurePerm("voucher_unpost", "反记账")) return;
       if (v.status !== "posted") return alert("仅已记账状态可反记账");
       v.status = "audited";
     }
     if (btn.dataset.action === "unaudit") {
+      if (!ensurePerm("voucher_unaudit", "取消审核")) return;
       if (v.status !== "audited") return alert("仅已审核状态可反审核");
       v.status = "draft";
     }
@@ -1150,6 +1479,8 @@ function bindEvents() {
 
   document.querySelector("#refreshBalanceBtn").addEventListener("click", renderBalanceTable);
   document.querySelector("#refreshLedgerBtn").addEventListener("click", renderLedger);
+  el.refreshAgingBtn?.addEventListener("click", renderAgingReport);
+  el.refreshSalesStatsBtn?.addEventListener("click", renderSalesStats);
   el.balanceTableBody.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-ledger-subject]");
     if (!btn) return;
@@ -1158,6 +1489,7 @@ function bindEvents() {
   });
 
   document.querySelector("#generateReportBtn").addEventListener("click", () => {
+    if (!ensurePerm("report_generate", "报表生成")) return;
     const book = getActiveBook();
     const startDate = document.querySelector("#reportStartDate").value;
     const endDate = document.querySelector("#reportEndDate").value;
@@ -1225,6 +1557,7 @@ function bindEvents() {
   });
 
   el.reportVersionBody.addEventListener("click", (e) => {
+    if (!ensurePerm("report_query", "报表查询")) return;
     const btn = e.target.closest("button[data-report-action]");
     if (!btn) return;
     const book = getActiveBook();
@@ -1232,6 +1565,14 @@ function bindEvents() {
     if (!report) return;
     if (btn.dataset.reportAction === "view") {
       book.currentReportId = report.id;
+      saveState();
+      rerenderAll();
+      return;
+    }
+    if (btn.dataset.reportAction === "delete") {
+      if (!ensurePerm("report_delete", "报表删除")) return;
+      book.reportVersions = book.reportVersions.filter((x) => x.id !== report.id);
+      if (book.currentReportId === report.id) book.currentReportId = book.reportVersions[book.reportVersions.length - 1]?.id || "";
       saveState();
       rerenderAll();
       return;

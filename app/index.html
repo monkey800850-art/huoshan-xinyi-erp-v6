@@ -14,11 +14,43 @@
 
     <main>
       <section class="card">
+        <h2>-1. 系统管理（账号/登录/授权）</h2>
+        <div class="row">
+          <label>注册名 <input id="regUsernameInput" placeholder="例如 zhangsan" /></label>
+          <label>密码 <input id="regPasswordInput" type="password" placeholder="至少6位" /></label>
+          <button id="registerBtn">注册账号</button>
+        </div>
+        <div class="row">
+          <label>账号密码登录：账号 <input id="loginUsernameInput" /></label>
+          <label>密码 <input id="loginPasswordInput" type="password" /></label>
+          <button id="loginPwdBtn">登录</button>
+        </div>
+        <div class="row">
+          <label>短信码登录：手机号 <input id="loginPhoneInput" placeholder="13800000000" /></label>
+          <label>验证码 <input id="loginSmsCodeInput" placeholder="固定: 123456" /></label>
+          <button id="loginSmsBtn">短信码登录</button>
+          <button id="loginWxBtn">微信扫码登录（模拟）</button>
+        </div>
+        <div id="authMeta" class="muted">未登录</div>
+        <h3>权限授权（当前选中用户）</h3>
+        <div class="row">
+          <label>用户
+            <select id="permUserSelect"></select>
+          </label>
+          <button id="savePermBtn">保存授权</button>
+        </div>
+        <div id="permCheckGrid" class="check-grid"></div>
+      </section>
+
+      <section class="card">
         <h2>0. M3 多账套管理（同库多账套模拟）</h2>
         <div class="row">
           <label>账套名称 <input id="bookNameInput" placeholder="例如：杭州总公司账套" /></label>
           <label>法人主体 <input id="legalEntityInput" placeholder="例如：杭州凤凰科技有限公司" /></label>
           <label><input type="checkbox" id="isLegalEntityChk" checked /> 法人账套</label>
+          <label>所属法人账套
+            <select id="parentLegalBookSelect"></select>
+          </label>
           <button id="createBookBtn">新建账套</button>
         </div>
         <div class="row">
@@ -32,6 +64,11 @@
           </thead>
           <tbody></tbody>
         </table>
+      </section>
+
+      <section class="card">
+        <h2>0.1 老板看板（资金/利润/应收应付预警）</h2>
+        <div id="bossDashboard" class="check-grid"></div>
       </section>
 
       <section class="card">
@@ -130,6 +167,25 @@
         </table>
       </section>
 
+      
+      <section class="card">
+        <h2>1.55 项目管理（辅助项）</h2>
+        <div class="row">
+          <label>项目名称 <input id="projectNameInput" /></label>
+          <label>项目地址 <input id="projectAddressInput" /></label>
+          <label>负责人 <input id="projectOwnerInput" /></label>
+          <label>开工日期 <input type="date" id="projectStartInput" /></label>
+          <label>计划完工 <input type="date" id="projectPlanFinishInput" /></label>
+          <label>竣工日期 <input type="date" id="projectFinishInput" /></label>
+          <label>结算日期 <input type="date" id="projectSettleInput" /></label>
+          <button id="addProjectBtn">新增项目</button>
+        </div>
+        <table id="projectTable">
+          <thead><tr><th>ID</th><th>项目名称</th><th>项目地址</th><th>负责人</th><th>开工</th><th>计划完工</th><th>竣工</th><th>结算</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
       <section class="card">
         <h2>1.6 辅助项目管理（关联单位/个人/部门档案）</h2>
         <div class="row">
@@ -139,6 +195,7 @@
               <option value="ORG">单位（客户/供应商）</option>
               <option value="PERSON">个人（外部/员工）</option>
               <option value="DEPT">部门</option>
+              <option value="PROJ">项目</option>
             </select>
           </label>
         </div>
@@ -156,7 +213,7 @@
         </div>
         <table id="entryTable">
           <thead>
-            <tr><th>科目编码</th><th>科目名称</th><th>借方金额</th><th>贷方金额</th><th>辅助项</th><th>操作</th></tr>
+            <tr><th>科目编码</th><th>科目名称</th><th>借方金额</th><th>贷方金额</th><th>到期日(应收/应付必填)</th><th>辅助项</th><th>操作</th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -200,6 +257,17 @@
           <tbody></tbody>
         </table>
       </section>
+
+      
+      <section class="card">
+        <h2>5.5 应收应付账龄/逾期报表</h2>
+        <button id="refreshAgingBtn">刷新账龄报表</button>
+        <table id="agingTable">
+          <thead><tr><th>类型</th><th>单位</th><th>凭证号</th><th>发生日期</th><th>到期日</th><th>金额</th><th>账龄(天)</th><th>逾期天数</th><th>状态</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
 
       <section class="card">
         <h2>6. M2 个别财务报表（当前账套）</h2>
@@ -260,6 +328,17 @@
         </table>
       </section>
 
+      
+      <section class="card">
+        <h2>7.5 销售业绩统计（收入）</h2>
+        <button id="refreshSalesStatsBtn">刷新统计</button>
+        <table id="salesStatsTable">
+          <thead><tr><th>单位</th><th>业务员</th><th>地区</th><th>收入金额</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+
       <section class="card">
         <h2>8. M4 智能助手（摘要联想 / AI凭证草稿 / 智能纠错）</h2>
         <div class="row">
@@ -286,6 +365,7 @@
         <td><input class="subject-name" placeholder="库存现金" readonly /></td>
         <td><input class="debit" placeholder="0.00" /></td>
         <td><input class="credit" placeholder="0.00" /></td>
+        <td><input class="due-date" type="date" /></td>
         <td>
           <div class="assist-cell">
             <select class="assist-type">
@@ -293,6 +373,7 @@
               <option value="ORG">单位</option>
               <option value="PERSON">个人</option>
               <option value="DEPT">部门</option>
+              <option value="PROJ">项目</option>
             </select>
             <select class="assist-item"><option value="">选择辅助项</option></select>
             <input class="assist-text" placeholder="或手工录入" />
